@@ -21,8 +21,12 @@ defmodule Bankroll.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      # {:dep_from_hexpm, "~> 0.3.0"},
-      # {:dep_from_git, git: "https://github.com/elixir-lang/my_dep.git", tag: "0.1.0"}
+      {:ecto_sql, "~> 3.6"},
+      {:phoenix, "~> 1.7.2"},
+      {:plug, "~> 1.14"},
+      {:stripity_stripe, "~> 2.17"},
+      {:phoenix_live_view, "~> 0.18.16"},
+      {:billing, path: "../billing"}
     ]
   end
 end

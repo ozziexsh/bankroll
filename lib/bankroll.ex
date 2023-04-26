@@ -1,18 +1,15 @@
 defmodule Bankroll do
-  @moduledoc """
-  Documentation for `Bankroll`.
-  """
+  defmacro __using__(opts) do
+    quote do
+      @billing unquote(opts[:billing])
 
-  @doc """
-  Hello world.
+      @before_compile unquote(__MODULE__)
+    end
+  end
 
-  ## Examples
-
-      iex> Bankroll.hello()
-      :world
-
-  """
-  def hello do
-    :world
+  defmacro __before_compile__(_env) do
+    quote do
+      def billing, do: @billing
+    end
   end
 end
