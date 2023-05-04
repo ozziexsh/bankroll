@@ -43,7 +43,7 @@
   async function submitPaymentMethod() {
     paymentStatus = PaymentStatus.Loading;
 
-    const url = new URL($props.base_url);
+    const url = new URL($props.finalize_url);
     if (price_id) {
       url.searchParams.set('price_id', price_id);
     }
@@ -71,6 +71,7 @@
       $props = response.props;
 
       if (price_id) {
+        // todo: hide elements in modal while this is processing
         const response = await api
           .url('/subscriptions')
           .post({ price_id })

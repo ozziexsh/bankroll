@@ -12,6 +12,7 @@ interface Subscription {
     stripe_price_id: string;
     quantity: number;
   }>;
+  status: string;
 }
 
 export interface Plan {
@@ -30,6 +31,35 @@ export interface Invoice {
   created: string;
 }
 
+type PaymentIntentStatus =
+  | 'requires_confirmation'
+  | 'requires_payment_method'
+  | 'requires_action'
+  | 'succeeded'
+  | 'processing'
+  | 'incomplete';
+
+export interface PaymentIntent {
+  id: string;
+  client_secret: string;
+  amount: number;
+  status: PaymentIntentStatus;
+  currency: string;
+}
+
+export type SetupIntentStatus =
+  | 'succeeded'
+  | 'requires_payment_method'
+  | 'requires_action'
+  | 'processing';
+
+export interface SetupIntent {
+  id: string;
+  status: SetupIntentStatus;
+  payment_method: string | null;
+  client_secret: string | null;
+}
+
 export interface Props {
   subscription: null | Subscription;
   payment_method: null | {
@@ -42,6 +72,10 @@ export interface Props {
   recurring: boolean;
   plans: Plan[];
   base_url: string;
+  finalize_url: string;
   on_trial: boolean;
   trial_ends_at: null | string;
+  payment_intent: null | PaymentIntent;
+  setup_intent: null | SetupIntent;
+  fix_subscription_url: string | null;
 }

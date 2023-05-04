@@ -3,9 +3,23 @@ defmodule Bankroll.Router do
     quote do
       Phoenix.Router.scope unquote(path), as: false, alias: false do
         Phoenix.Router.scope "/:customer_type/:customer_id" do
-          opts = [assigns: %{bankroll: unquote(opts[:bankroll])}]
+          opts = [
+            assigns: %{bankroll: unquote(opts[:bankroll]), route_helpers: __MODULE__.Helpers}
+          ]
 
-          Phoenix.Router.get("/", Bankroll.Controllers.BillingController, :index, opts)
+          Phoenix.Router.get(
+            "/",
+            Bankroll.Controllers.BillingController,
+            :index,
+            Keyword.merge(opts, as: :bankroll_root)
+          )
+
+          Phoenix.Router.get(
+            "/finalize",
+            Bankroll.Controllers.BillingController,
+            :finalize,
+            Keyword.merge(opts, as: :bankroll_finalize)
+          )
 
           Phoenix.Router.post(
             "/setup-payment",

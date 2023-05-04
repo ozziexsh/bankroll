@@ -1,7 +1,6 @@
 defmodule Bankroll.Controllers.BillingController do
   alias Billing.Subscriptions
   alias Billing.Customers
-  alias Billing.SubscriptionBuilder, as: SB
 
   use Phoenix.Controller,
     formats: [:html, :json],
@@ -35,7 +34,21 @@ defmodule Bankroll.Controllers.BillingController do
 
     conn
     |> assign(:props, get_props(conn, customer))
+    |> assign(:view, "index")
     |> render(:index)
+  end
+
+  def finalize(conn, _params) do
+    props = get_props(conn, conn.assigns.customer)
+
+    if props.payment_intent || props.setup_intent do
+      conn
+      |> assign(:props, props)
+      |> assign(:view, "finalize")
+      |> render(:index)
+    else
+      redirect(conn, external: billing_url(conn))
+    end
   end
 
   defp get_props(conn, customer) do
@@ -48,7 +61,11 @@ defmodule Bankroll.Controllers.BillingController do
       canceled: if(subscription, do: Subscriptions.canceled?(subscription), else: nil),
       recurring: if(subscription, do: Subscriptions.recurring?(subscription), else: nil),
       plans: conn.assigns.bankroll.plans(),
-      base_url: current_url(conn, %{}),
+      base_url: billing_url(conn),
+      finalize_url: finalize_url(conn),
+      fix_subscription_url: fix_subscription_url(conn, subscription),
+      payment_intent: maybe_get_payment_intent(conn, conn.assigns.customer),
+      setup_intent: maybe_get_setup_intent(conn, conn.assigns.customer),
       on_trial: if(subscription, do: Subscriptions.trial?(subscription), else: nil),
       trial_ends_at:
         if(subscription && subscription.trial_ends_at,
@@ -56,6 +73,61 @@ defmodule Bankroll.Controllers.BillingController do
           else: nil
         )
     }
+  end
+
+  defp fix_subscription_url(conn, %{stripe_id: id}) when not is_nil(id) do
+    # get last invoice and payment intent, return finalize url with payment intent id
+    {:ok, stripe_subscription} =
+      Stripe.Subscription.retrieve(id, expand: ["latest_invoice.payment_intent"])
+
+    case stripe_subscription do
+      %{status: "past_due"} ->
+        url = finalize_url(conn)
+        "#{url}?payment_intent=#{stripe_subscription.latest_invoice.payment_intent.id}"
+
+      _ ->
+        nil
+    end
+  end
+
+  defp fix_subscription_url(_, _), do: nil
+
+  defp maybe_get_setup_intent(conn, customer) do
+    id = Map.get(conn.params, "setup_intent")
+
+    with id when not is_nil(id) <- id,
+         {:ok, intent} <- Stripe.SetupIntent.retrieve(id, %{}),
+         true <- intent.customer == customer.stripe_id do
+      Map.take(intent, [:id, :client_secret, :status, :payment_method])
+    else
+      _ -> nil
+    end
+  end
+
+  defp maybe_get_payment_intent(conn, customer) do
+    id = Map.get(conn.params, "payment_intent")
+
+    with id when not is_nil(id) <- id,
+         {:ok, intent} <- Stripe.PaymentIntent.retrieve(id, %{}),
+         true <- intent.customer == customer.stripe_id do
+      Map.take(intent, [:id, :client_secret, :amount, :currency, :status])
+    else
+      _ -> nil
+    end
+  end
+
+  defp finalize_url(conn) do
+    customer_type = conn.params["customer_type"]
+    customer_id = conn.params["customer_id"]
+    router = conn.assigns.route_helpers
+    router.bankroll_finalize_url(conn, :finalize, customer_type, customer_id)
+  end
+
+  defp billing_url(conn) do
+    customer_type = conn.params["customer_type"]
+    customer_id = conn.params["customer_id"]
+    router = conn.assigns.route_helpers
+    router.bankroll_root_url(conn, :index, customer_type, customer_id)
   end
 
   def get_payment_method(%{payment_id: nil}), do: nil
@@ -85,8 +157,7 @@ defmodule Bankroll.Controllers.BillingController do
     subscription = Customers.subscription(customer)
     plan = conn.assigns.bankroll.plan_from_price_id(price_id)
     trial_days = plan[:trial_days]
-
-    return_url = conn |> current_url(%{}) |> String.replace_trailing("/subscriptions", "")
+    return_url = finalize_url(conn)
 
     cond do
       subscription && subscription.stripe_price_id == price_id ->
@@ -101,7 +172,11 @@ defmodule Bankroll.Controllers.BillingController do
             conn |> json(%{ok: false, message: error.user_message})
 
           {:requires_action, payment_intent} ->
-            conn |> json(%{client_secret: payment_intent.client_secret})
+            conn
+            |> json(%{
+              payment_intent_id: payment_intent.id,
+              client_secret: payment_intent.client_secret
+            })
 
           {:ok, _subscription} ->
             conn |> json(%{props: get_props(conn, customer)})

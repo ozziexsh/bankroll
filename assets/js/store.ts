@@ -8,7 +8,11 @@ export let props = writable<Props>({
   canceled: false,
   recurring: false,
   plans: [],
-  current_url: '',
+  base_url: '',
+  finalize_url: '',
   on_trial: false,
   trial_ends_at: null,
+  payment_intent: null,
+  setup_intent: null,
+  fix_subscription_url: '',
 });

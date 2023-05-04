@@ -12,6 +12,7 @@
     "vite": "^4.3.1"
   },
   "dependencies": {
+    "@types/stripe-v3": "^3.1.28",
     "svelte": "^3.58.0",
     "wretch": "^2.5.2"
   },

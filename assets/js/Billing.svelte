@@ -21,87 +21,6 @@
   let setup_intent_modal_visible = false;
   let setup_intent_modal_content = '';
 
-  onMount(() => {
-    checkForSetupIntent();
-    checkForPaymentIntent();
-  });
-
-  async function checkForPaymentIntent() {
-    const clientSecret = new URLSearchParams(window.location.search).get(
-      'payment_intent_client_secret',
-    );
-    const setupPriceId = new URLSearchParams(window.location.search).get(
-      'price_id',
-    );
-    if (!clientSecret || !setupPriceId) {
-      return;
-    }
-    const stripe = getStripe();
-    const { paymentIntent } = await stripe.retrievePaymentIntent(clientSecret);
-    if (!paymentIntent) {
-      return;
-    }
-    if (paymentIntent.status !== 'succeeded') {
-      setup_intent_modal_content =
-        'Could not complete payment. Please try a different payment method.';
-      setup_intent_modal_visible = true;
-    } else {
-      setup_intent_modal_content = 'Payment completed!';
-      setup_intent_modal_visible = true;
-      // todo: wait for subscription webhook and update props so subscription shows as active
-    }
-    // remove query params
-    window.history.replaceState({}, null, $props.base_url);
-  }
-
-  async function checkForSetupIntent() {
-    const clientSecret = new URLSearchParams(window.location.search).get(
-      'setup_intent_client_secret',
-    );
-    const setupPriceId = new URLSearchParams(window.location.search).get(
-      'price_id',
-    );
-    if (!clientSecret) {
-      return;
-    }
-    const stripe = getStripe();
-    const { setupIntent } = await stripe.retrieveSetupIntent(clientSecret);
-    if (setupIntent?.status == 'succeeded') {
-      // todo: loading, maybe price id, etc
-      // todo: don't duplicate logic
-      setup_intent_modal_content = 'Payment method added';
-      setup_intent_modal_visible = true;
-
-      const response = await api
-        .url('/store-payment')
-        .post({ payment_method_id: setupIntent.payment_method })
-        .json<{ props: Props }>();
-
-      $props = response.props;
-
-      if (setupPriceId) {
-        const response = await api
-          .url('/subscriptions')
-          .post({ price_id: setupPriceId })
-          .json<{
-            props: Props;
-          }>();
-
-        $props = response.props;
-      }
-    } else if (
-      setupIntent?.status == 'requires_payment_method' ||
-      setupIntent?.status == 'processing'
-    ) {
-      // todo: handle processing??
-      setup_intent_modal_content =
-        'Payment method could not be added. Please try a different payment method.';
-      setup_intent_modal_visible = true;
-    }
-    // remove query params
-    window.history.replaceState({}, null, $props.base_url);
-  }
-
   async function onPlanSelected(plan: Plan) {
     const price_id = monthly ? plan.prices.monthly.id : plan.prices.yearly.id;
 
@@ -124,7 +43,8 @@
       setup_intent_modal_visible = true;
     } else if (response.client_secret) {
       const stripe = getStripe();
-      const { error, setupIntent } = await stripe.handleNextAction({
+      // todo: handle this on the finalize page?
+      const { error, paymentIntent } = await stripe.handleNextAction({
         clientSecret: response.client_secret,
       });
       // stripe may have redirected to a different url at this point
@@ -134,10 +54,10 @@
         setup_intent_modal_content =
           'Payment method could not be added. Please try a different payment method.';
         setup_intent_modal_visible = true;
-      } else if (setupIntent?.status == 'succeeded') {
+      } else if (paymentIntent?.status == 'succeeded') {
         setup_intent_modal_content = 'Payment confirmed successfully';
         setup_intent_modal_visible = true;
-      } else if (setupIntent?.status == 'processing') {
+      } else if (paymentIntent?.status == 'processing') {
         // todo: ???
       }
     } else if (response.props) {
@@ -172,6 +92,7 @@
 </script>
 
 <div class="p-12">
+  <p class="mb-4"><a href="/">Back to home</a></p>
   <div class="flex items-start space-x-6">
     <div class="w-1/3">
       <PaymentCard bind:payment_method={$props.payment_method} />
@@ -206,6 +127,40 @@
                 </h3>
                 <div class="mt-2 text-sm text-yellow-700">
                   <p>Select a plan from the list below</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        {/if}
+        {#if $props.fix_subscription_url}
+          <div class="rounded-md bg-yellow-50 p-4">
+            <div class="flex">
+              <div class="flex-shrink-0">
+                <svg
+                  class="h-5 w-5 text-yellow-400"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                  aria-hidden="true"
+                >
+                  <path
+                    fill-rule="evenodd"
+                    d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z"
+                    clip-rule="evenodd"
+                  />
+                </svg>
+              </div>
+              <div class="ml-3">
+                <h3 class="text-sm font-medium text-yellow-800">
+                  We couldn't process your last payment and it is now overdue.
+                  Please fix the issue by visiting this link below.
+                </h3>
+                <div class="mt-4 text-sm text-yellow-700">
+                  <a
+                    href={$props.fix_subscription_url}
+                    class="rounded-md bg-yellow-50 px-2 py-1.5 text-sm font-medium text-yellow-800 hover:bg-yellow-100 focus:outline-none focus:ring-2 focus:ring-yellow-600 focus:ring-offset-2 focus:ring-offset-yellow-50"
+                  >
+                    Fix Issues
+                  </a>
                 </div>
               </div>
             </div>
@@ -252,7 +207,9 @@
                       </button>
                     </div>
                   </div>
-                {:else}{/if}
+                {:else}
+                  <!-- todo -->
+                {/if}
               </div>
             </div>
           </div>
