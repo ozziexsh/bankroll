@@ -4,11 +4,11 @@
   import { props } from '../store';
   import { getStripe } from '../stripe';
   import type { Props } from '../types';
-  import Button from './button.svelte';
-  import Modal from './modal.svelte';
+  import Button from './Button.svelte';
+  import Modal from './Modal.svelte';
 
   export let visible: boolean;
-  export let price_id: null | string = null;
+  export let priceId: null | string = null;
   const dispatch = createEventDispatcher();
 
   enum PaymentStatus {
@@ -19,7 +19,7 @@
   }
 
   const stripe = getStripe();
-  let client_secret: string | null = null;
+  let clientSecret: string | null = null;
   let elements;
   let setupError = '';
   let paymentStatus = PaymentStatus.Idle;
@@ -29,12 +29,12 @@
       .url('/setup-payment')
       .post()
       .json<{ client_secret: string }>();
-    client_secret = response.client_secret;
+    clientSecret = response.client_secret;
   }
 
   function setupStripeElement(el: HTMLDivElement) {
     elements = stripe.elements({
-      clientSecret: client_secret,
+      clientSecret: clientSecret,
     });
     const paymentElement = elements.create('payment');
     paymentElement.mount(`#${el.id}`);
@@ -44,8 +44,8 @@
     paymentStatus = PaymentStatus.Loading;
 
     const url = new URL($props.finalize_url);
-    if (price_id) {
-      url.searchParams.set('price_id', price_id);
+    if (priceId) {
+      url.searchParams.set('price_id', priceId);
     }
 
     const { error, setupIntent } = await stripe.confirmSetup({
@@ -70,11 +70,11 @@
 
       $props = response.props;
 
-      if (price_id) {
+      if (priceId) {
         // todo: hide elements in modal while this is processing
         const response = await api
           .url('/subscriptions')
-          .post({ price_id })
+          .post({ price_id: priceId })
           .json<{
             props?: Props;
             message?: string;
@@ -101,11 +101,11 @@
   }
 
   $: {
-    if (visible && !client_secret) {
+    if (visible && !clientSecret) {
       setupPaymentMethod();
     }
     if (!visible) {
-      client_secret = '';
+      clientSecret = '';
       setupError = '';
       paymentStatus = PaymentStatus.Idle;
     }
@@ -151,7 +151,7 @@
     <div class="mt-5 sm:mt-6">
       <Button class="w-full justify-center" on:click={onFinish}>Finish</Button>
     </div>
-  {:else if client_secret}
+  {:else if clientSecret}
     <form on:submit|preventDefault={submitPaymentMethod}>
       <div id="stripe-payment-form" use:setupStripeElement />
 

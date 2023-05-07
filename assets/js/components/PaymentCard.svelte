@@ -1,6 +1,6 @@
 <script lang="ts">
-  import Button from './button.svelte';
-  import SetupPaymentModal from './setup_payment_modal.svelte';
+  import Button from './Button.svelte';
+  import SetupPaymentModal from './SetupPaymentModal.svelte';
 
   interface PaymentMethod {
     payment_id: string;
@@ -8,9 +8,9 @@
     payment_last_four: string;
   }
 
-  export let payment_method: null | PaymentMethod;
+  export let paymentMethod: null | PaymentMethod;
 
-  let modal_visible = false;
+  let modalVisible = false;
 </script>
 
 <div class="rounded-md border border-gray-200 bg-gray-50 p-4">
@@ -20,7 +20,7 @@
     </h3>
   </div>
 
-  {#if !payment_method}
+  {#if !paymentMethod}
     <div class="text-center mt-6">
       <svg
         xmlns="http://www.w3.org/2000/svg"
@@ -43,7 +43,7 @@
         You need a payment method to subscribe
       </p>
       <div class="mt-6">
-        <Button type="button" on:click={() => (modal_visible = true)}>
+        <Button type="button" on:click={() => (modalVisible = true)}>
           <svg
             class="-ml-0.5 mr-1.5 h-5 w-5"
             viewBox="0 0 20 20"
@@ -60,15 +60,15 @@
     </div>
   {:else}
     <p class="text-gray-800 mt-4">
-      Your payment method on file is a {payment_method.payment_type} ending in {payment_method.payment_last_four}
+      Your payment method on file is a {paymentMethod.payment_type} ending in {paymentMethod.payment_last_four}
     </p>
     <div class="mt-4">
-      <Button on:click={() => (modal_visible = true)}>Update</Button>
+      <Button on:click={() => (modalVisible = true)}>Update</Button>
     </div>
   {/if}
 </div>
 
 <SetupPaymentModal
-  visible={modal_visible}
-  on:close={() => (modal_visible = false)}
+  visible={modalVisible}
+  on:close={() => (modalVisible = false)}
 />

@@ -1,84 +1,90 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
   import { api } from './api';
-  import Button from './components/button.svelte';
-  import PaymentCard from './components/payment_card.svelte';
-  import PlanCard from './components/plan_card.svelte';
-  import SetupPaymentModal from './components/setup_payment_modal.svelte';
-  import Toggle from './components/toggle.svelte';
+  import Button from './components/Button.svelte';
+  import PaymentCard from './components/PaymentCard.svelte';
+  import PlanCard from './components/PlanCard.svelte';
+  import SetupPaymentModal from './components/SetupPaymentModal.svelte';
+  import Toggle from './components/Toggle.svelte';
   import { props } from './store';
   import type { Invoice, Plan, Props } from './types';
   import { getStripe } from './stripe';
-  import Modal from './components/modal.svelte';
+  import Modal from './components/Modal.svelte';
 
   export let _props: Props;
 
   $props = _props;
 
   let monthly = true;
-  let price_after_payment: string | null = null;
-  let payment_modal_visible = false;
-  let setup_intent_modal_visible = false;
-  let setup_intent_modal_content = '';
+  let priceAfterPayment: string | null = null;
+  let paymentModalVisible = false;
+  let setupIntentModalVisible = false;
+  let setupIntentModalContent = '';
+  let loadingSubscription = false;
 
   async function onPlanSelected(plan: Plan) {
-    const price_id = monthly ? plan.prices.monthly.id : plan.prices.yearly.id;
+    const priceId = monthly ? plan.prices.monthly.id : plan.prices.yearly.id;
 
     if (!$props.payment_method) {
-      price_after_payment = price_id;
-      payment_modal_visible = true;
+      priceAfterPayment = priceId;
+      paymentModalVisible = true;
       return;
     }
 
-    // todo: loading state
+    loadingSubscription = true;
 
-    const response = await api.url('/subscriptions').post({ price_id }).json<{
-      props?: Props;
-      client_secret?: string;
-      message?: string;
-    }>();
+    const response = await api
+      .url('/subscriptions')
+      .post({ price_id: priceId })
+      .json<{
+        props?: Props;
+        client_secret?: string;
+        message?: string;
+      }>();
 
     if (response.message) {
-      setup_intent_modal_content = response.message;
-      setup_intent_modal_visible = true;
+      setupIntentModalContent = response.message;
+      setupIntentModalVisible = true;
     } else if (response.client_secret) {
       const stripe = getStripe();
-      // todo: handle this on the finalize page?
       const { error, paymentIntent } = await stripe.handleNextAction({
         clientSecret: response.client_secret,
       });
       // stripe may have redirected to a different url at this point
       if (error) {
-        // Display error message in your UI.
-        // The card was declined (i.e. insufficient funds, card has expired, etc)
-        setup_intent_modal_content =
+        setupIntentModalContent =
           'Payment method could not be added. Please try a different payment method.';
-        setup_intent_modal_visible = true;
+        setupIntentModalVisible = true;
       } else if (paymentIntent?.status == 'succeeded') {
-        setup_intent_modal_content = 'Payment confirmed successfully';
-        setup_intent_modal_visible = true;
+        setupIntentModalContent = 'Payment confirmed successfully';
+        setupIntentModalVisible = true;
       } else if (paymentIntent?.status == 'processing') {
         // todo: ???
       }
     } else if (response.props) {
       $props = response.props;
     }
+
+    loadingSubscription = false;
   }
 
   async function cancelSubscription() {
+    loadingSubscription = true;
     const response = await api
       .url('/subscriptions')
       .delete()
       .json<{ props: Props }>();
     $props = response.props;
+    loadingSubscription = false;
   }
 
   async function resumeSubscription() {
+    loadingSubscription = true;
     const response = await api
       .url('/subscriptions/resume')
       .post()
       .json<{ props: Props }>();
     $props = response.props;
+    loadingSubscription = false;
   }
 
   function invoices() {
@@ -86,8 +92,8 @@
   }
 
   function onPaymentModalClose() {
-    payment_modal_visible = false;
-    price_after_payment = null;
+    paymentModalVisible = false;
+    priceAfterPayment = null;
   }
 </script>
 
@@ -95,7 +101,7 @@
   <p class="mb-4"><a href="/">Back to home</a></p>
   <div class="flex items-start space-x-6">
     <div class="w-1/3">
-      <PaymentCard bind:payment_method={$props.payment_method} />
+      <PaymentCard bind:paymentMethod={$props.payment_method} />
     </div>
 
     <div class="flex-1">
@@ -226,17 +232,26 @@
             <PlanCard {plan} {monthly}>
               {#if $props.subscription?.stripe_price_id === (monthly ? plan.prices.monthly.id : plan.prices.yearly.id)}
                 {#if $props.grace_period}
-                  <Button on:click={resumeSubscription}>
+                  <Button
+                    on:click={resumeSubscription}
+                    loading={loadingSubscription}
+                  >
                     Resume Subscription
                   </Button>
                 {/if}
                 {#if $props.recurring}
-                  <Button type="button" on:click={() => cancelSubscription()}>
+                  <Button
+                    on:click={() => cancelSubscription()}
+                    loading={loadingSubscription}
+                  >
                     Cancel Subscription
                   </Button>
                 {/if}
               {:else}
-                <Button type="button" on:click={() => onPlanSelected(plan)}>
+                <Button
+                  on:click={() => onPlanSelected(plan)}
+                  loading={loadingSubscription}
+                >
                   {$props.subscription ? 'Change Plan' : 'Subscribe'}
                 </Button>
               {/if}
@@ -289,17 +304,17 @@
 </div>
 
 <SetupPaymentModal
-  visible={payment_modal_visible}
-  price_id={price_after_payment}
+  visible={paymentModalVisible}
+  priceId={priceAfterPayment}
   on:close={onPaymentModalClose}
 />
 
 <Modal
-  visible={setup_intent_modal_visible}
+  visible={setupIntentModalVisible}
   on:close={() => {
-    setup_intent_modal_content = '';
-    setup_intent_modal_visible = false;
+    setupIntentModalContent = '';
+    setupIntentModalVisible = false;
   }}
 >
-  <p>{setup_intent_modal_content}</p>
+  <p>{setupIntentModalContent}</p>
 </Modal>

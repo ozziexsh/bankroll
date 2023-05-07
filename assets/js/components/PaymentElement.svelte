@@ -3,7 +3,7 @@
   import { props } from '../store';
   import { getStripe } from '../stripe';
   import type { Props } from '../types';
-  import Button from './button.svelte';
+  import Button from './Button.svelte';
   import { onMount } from 'svelte';
 
   export let onSuccess: (response: { props: Props }) => void;

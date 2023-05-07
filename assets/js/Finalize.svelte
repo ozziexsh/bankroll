@@ -4,7 +4,7 @@
   import type { Props } from './types';
   import { getStripe } from './stripe';
   import { api } from './api';
-  import Modal from './components/modal.svelte';
+  import Modal from './components/Modal.svelte';
   import PaymentElement from './components/PaymentElement.svelte';
 
   enum SetupPaymentStatus {
