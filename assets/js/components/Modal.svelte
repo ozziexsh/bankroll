@@ -1,10 +1,10 @@
 <script>
-  import { createEventDispatcher } from 'svelte';
-  import { scale, fade } from 'svelte/transition';
+import { createEventDispatcher } from 'svelte';
+import { scale, fade } from 'svelte/transition';
 
-  export let visible;
+export let visible;
 
-  const dispatch = createEventDispatcher();
+const dispatch = createEventDispatcher();
 </script>
 
 {#if visible}

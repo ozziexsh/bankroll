@@ -1,169 +1,169 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import { props } from './store';
-  import type { Props } from './types';
-  import { getStripe } from './stripe';
-  import { api } from './api';
-  import Modal from './components/Modal.svelte';
-  import PaymentElement from './components/PaymentElement.svelte';
+import { onMount } from 'svelte';
+import { props } from './store';
+import type { Props } from './types';
+import { getStripe } from './stripe';
+import { api } from './api';
+import Modal from './components/Modal.svelte';
+import PaymentElement from './components/PaymentElement.svelte';
 
-  enum SetupPaymentStatus {
-    EnterPaymentInfo,
-    ConfirmingPayment,
-    Success,
-    Error,
+enum SetupPaymentStatus {
+  EnterPaymentInfo,
+  ConfirmingPayment,
+  Success,
+  Error,
+}
+
+export let _props: Props;
+
+$props = _props;
+
+const stripe = getStripe();
+
+let paymentIntent = $props.payment_intent;
+let setupIntent = $props.setup_intent;
+
+let paymentModalStatus: null | SetupPaymentStatus = null;
+let paymentModalMessage = '';
+let setupModalStatus: null | SetupPaymentStatus = null;
+let setupModalMessage = '';
+
+let priceId = new URLSearchParams(window.location.search).get('price_id');
+let returnUrl = getReturnUrl();
+
+onMount(() => {
+  checkForSetupIntent();
+  checkForPaymentIntent();
+});
+
+function getReturnUrl() {
+  if (!priceId) {
+    return $props.finalize_url;
   }
+  const url = new URL($props.finalize_url);
+  url.searchParams.set('price_id', priceId);
+  return url.toString();
+}
 
-  export let _props: Props;
-
-  $props = _props;
-
-  const stripe = getStripe();
-
-  let paymentIntent = $props.payment_intent;
-  let setupIntent = $props.setup_intent;
-
-  let paymentModalStatus: null | SetupPaymentStatus = null;
-  let paymentModalMessage = '';
-  let setupModalStatus: null | SetupPaymentStatus = null;
-  let setupModalMessage = '';
-
-  let priceId = new URLSearchParams(window.location.search).get('price_id');
-  let returnUrl = getReturnUrl();
-
-  onMount(() => {
-    checkForSetupIntent();
-    checkForPaymentIntent();
-  });
-
-  function getReturnUrl() {
-    if (!priceId) {
-      return $props.finalize_url;
-    }
-    const url = new URL($props.finalize_url);
-    url.searchParams.set('price_id', priceId);
-    return url.toString();
+async function checkForPaymentIntent() {
+  if (!paymentIntent) {
+    return;
   }
-
-  async function checkForPaymentIntent() {
-    if (!paymentIntent) {
-      return;
-    }
-    // todo: loading
-    if (
-      paymentIntent.status === 'requires_confirmation' ||
-      paymentIntent.status === 'incomplete'
-    ) {
-      const response = await stripe.confirmPayment({
-        clientSecret: $props.payment_intent.client_secret,
-        redirect: 'if_required',
-        confirmParams: {
-          return_url: returnUrl,
-        },
-      });
-      if (response.error) {
-        // todo: show response.error.message
-      }
-    } else if (paymentIntent.status === 'requires_action') {
-      const actionResult = await stripe.handleNextAction({
-        clientSecret: paymentIntent.client_secret,
-      });
-      if (actionResult.error) {
-        // todo
-      } else if (actionResult.paymentIntent) {
-        paymentIntent = actionResult.paymentIntent;
-      }
-    }
-  }
-
-  async function checkForSetupIntent() {
-    if (!setupIntent) {
-      return;
-    }
-    if (setupIntent.status == 'succeeded') {
-      // todo: loading
-      const response = await api
-        .url('/store-payment')
-        .post({ payment_method_id: setupIntent.payment_method })
-        .json<{ props: Props }>();
-
-      const setupPriceId = new URLSearchParams(window.location.search).get(
-        'price_id',
-      );
-
-      if (setupPriceId) {
-        // todo
-        const response = await api
-          .url('/subscriptions')
-          .post({ price_id: setupPriceId })
-          .json<{
-            props: Props;
-          }>();
-      }
-    } else if (setupIntent.status === 'requires_action') {
-      // todo: loading
-      const actionResult = await stripe.handleNextAction({
-        clientSecret: setupIntent.client_secret,
-      });
-      if (actionResult.error) {
-        // todo
-      } else if (actionResult.setupIntent) {
-        setupIntent = actionResult.setupIntent;
-      }
-    }
-  }
-
-  function openPaymentModal() {
-    paymentModalStatus = SetupPaymentStatus.EnterPaymentInfo;
-    paymentModalMessage = '';
-  }
-
-  function closePaymentModal() {
-    paymentModalStatus = null;
-    paymentModalMessage = '';
-  }
-
-  async function onPaymentSuccess(paymentResult: { props: Props }) {
-    paymentModalStatus = SetupPaymentStatus.ConfirmingPayment;
+  // todo: loading
+  if (
+    paymentIntent.status === 'requires_confirmation' ||
+    paymentIntent.status === 'incomplete'
+  ) {
     const response = await stripe.confirmPayment({
-      clientSecret: paymentIntent.client_secret,
+      clientSecret: $props.payment_intent.client_secret,
       redirect: 'if_required',
       confirmParams: {
         return_url: returnUrl,
-        payment_method: paymentResult.props.payment_method.payment_id,
       },
     });
     if (response.error) {
-      paymentModalStatus = SetupPaymentStatus.Error;
-      paymentModalMessage = response.error.message;
-      return;
+      // todo: show response.error.message
     }
-    paymentModalStatus = SetupPaymentStatus.Success;
-    paymentModalMessage =
-      'Payment succeeded. You will be redirected to the billing portal.';
-    setTimeout(() => {
-      window.location.href = $props.base_url;
-    }, 2000);
+  } else if (paymentIntent.status === 'requires_action') {
+    const actionResult = await stripe.handleNextAction({
+      clientSecret: paymentIntent.client_secret,
+    });
+    if (actionResult.error) {
+      // todo
+    } else if (actionResult.paymentIntent) {
+      paymentIntent = actionResult.paymentIntent;
+    }
   }
+}
 
-  function openSetupModal() {
-    setupModalStatus = SetupPaymentStatus.EnterPaymentInfo;
-    setupModalMessage = '';
+async function checkForSetupIntent() {
+  if (!setupIntent) {
+    return;
   }
+  if (setupIntent.status == 'succeeded') {
+    // todo: loading
+    const response = await api
+      .url('/store-payment')
+      .post({ payment_method_id: setupIntent.payment_method })
+      .json<{ props: Props }>();
 
-  function closeSetupModal() {
-    setupModalStatus = null;
-    setupModalMessage = '';
-  }
+    const setupPriceId = new URLSearchParams(window.location.search).get(
+      'price_id',
+    );
 
-  function onSetupSuccess() {
-    setupModalStatus = SetupPaymentStatus.Success;
-    setupModalMessage =
-      'Payment method added successfully. You will now be redirected back to the billing portal.';
-    setTimeout(() => {
-      window.location.href = $props.base_url;
-    }, 2000);
+    if (setupPriceId) {
+      // todo
+      const response = await api
+        .url('/subscriptions')
+        .post({ price_id: setupPriceId })
+        .json<{
+          props: Props;
+        }>();
+    }
+  } else if (setupIntent.status === 'requires_action') {
+    // todo: loading
+    const actionResult = await stripe.handleNextAction({
+      clientSecret: setupIntent.client_secret,
+    });
+    if (actionResult.error) {
+      // todo
+    } else if (actionResult.setupIntent) {
+      setupIntent = actionResult.setupIntent;
+    }
   }
+}
+
+function openPaymentModal() {
+  paymentModalStatus = SetupPaymentStatus.EnterPaymentInfo;
+  paymentModalMessage = '';
+}
+
+function closePaymentModal() {
+  paymentModalStatus = null;
+  paymentModalMessage = '';
+}
+
+async function onPaymentSuccess(paymentResult: { props: Props }) {
+  paymentModalStatus = SetupPaymentStatus.ConfirmingPayment;
+  const response = await stripe.confirmPayment({
+    clientSecret: paymentIntent.client_secret,
+    redirect: 'if_required',
+    confirmParams: {
+      return_url: returnUrl,
+      payment_method: paymentResult.props.payment_method.payment_id,
+    },
+  });
+  if (response.error) {
+    paymentModalStatus = SetupPaymentStatus.Error;
+    paymentModalMessage = response.error.message;
+    return;
+  }
+  paymentModalStatus = SetupPaymentStatus.Success;
+  paymentModalMessage =
+    'Payment succeeded. You will be redirected to the billing portal.';
+  setTimeout(() => {
+    window.location.href = $props.base_url;
+  }, 2000);
+}
+
+function openSetupModal() {
+  setupModalStatus = SetupPaymentStatus.EnterPaymentInfo;
+  setupModalMessage = '';
+}
+
+function closeSetupModal() {
+  setupModalStatus = null;
+  setupModalMessage = '';
+}
+
+function onSetupSuccess() {
+  setupModalStatus = SetupPaymentStatus.Success;
+  setupModalMessage =
+    'Payment method added successfully. You will now be redirected back to the billing portal.';
+  setTimeout(() => {
+    window.location.href = $props.base_url;
+  }, 2000);
+}
 </script>
 
 <div class="p-12 space-y-4">

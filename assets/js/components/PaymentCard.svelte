@@ -1,16 +1,22 @@
 <script lang="ts">
-  import Button from './Button.svelte';
-  import SetupPaymentModal from './SetupPaymentModal.svelte';
+import { props } from '../store';
+import type { Props } from '../types';
+import Button from './Button.svelte';
+import SetupPaymentModal from './SetupPaymentModal.svelte';
 
-  interface PaymentMethod {
-    payment_id: string;
-    payment_type: string;
-    payment_last_four: string;
-  }
+interface PaymentMethod {
+  payment_id: string;
+  payment_type: string;
+  payment_last_four: string;
+}
 
-  export let paymentMethod: null | PaymentMethod;
+export let paymentMethod: null | PaymentMethod;
 
-  let modalVisible = false;
+let modalVisible = false;
+
+function onSetupSuccess(response: { props: Props }) {
+  $props = response.props;
+}
 </script>
 
 <div class="rounded-md border border-gray-200 bg-gray-50 p-4">
@@ -70,5 +76,6 @@
 
 <SetupPaymentModal
   visible={modalVisible}
+  onSuccess={onSetupSuccess}
   on:close={() => (modalVisible = false)}
 />

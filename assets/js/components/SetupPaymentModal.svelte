@@ -1,118 +1,95 @@
 <script lang="ts">
-  import { createEventDispatcher } from 'svelte';
-  import { api } from '../api';
-  import { props } from '../store';
-  import { getStripe } from '../stripe';
-  import type { Props } from '../types';
-  import Button from './Button.svelte';
-  import Modal from './Modal.svelte';
+import { createEventDispatcher } from 'svelte';
+import { api } from '../api';
+import { props } from '../store';
+import type { Props } from '../types';
+import Button from './Button.svelte';
+import Modal from './Modal.svelte';
+import PaymentElement from './PaymentElement.svelte';
+import { getStripe } from '../stripe';
 
-  export let visible: boolean;
-  export let priceId: null | string = null;
-  const dispatch = createEventDispatcher();
+export let visible: boolean;
+export let priceId: null | string = null;
+export let onSuccess: (response: { props: Props }) => void;
+const dispatch = createEventDispatcher();
 
-  enum PaymentStatus {
-    Idle,
-    Loading,
-    Success,
-    Error,
+enum PaymentStatus {
+  EnterPaymentInfo,
+  SubmittingSubscription,
+  Success,
+  Error,
+}
+
+let setupError = '';
+let paymentStatus = PaymentStatus.EnterPaymentInfo;
+let returnUrl = getReturnUrl();
+
+$: {
+  if (!visible) {
+    paymentStatus = PaymentStatus.EnterPaymentInfo;
+    setupError = '';
+  }
+}
+
+function getReturnUrl() {
+  const url = new URL($props.finalize_url);
+  if (priceId) {
+    url.searchParams.set('price_id', priceId);
+  }
+  return url.toString();
+}
+
+async function onPaymentSuccess() {
+  if (!priceId) {
+    paymentStatus = PaymentStatus.Success;
+    return;
   }
 
-  const stripe = getStripe();
-  let clientSecret: string | null = null;
-  let elements;
-  let setupError = '';
-  let paymentStatus = PaymentStatus.Idle;
+  paymentStatus = PaymentStatus.SubmittingSubscription;
 
-  async function setupPaymentMethod() {
-    const response = await api
-      .url('/setup-payment')
-      .post()
-      .json<{ client_secret: string }>();
-    clientSecret = response.client_secret;
-  }
+  const response = await api
+    .url('/subscriptions')
+    .post({ price_id: priceId })
+    .json<{
+      props?: Props;
+      client_secret?: string;
+      message?: string;
+    }>();
 
-  function setupStripeElement(el: HTMLDivElement) {
-    elements = stripe.elements({
-      clientSecret: clientSecret,
+  if (response.message) {
+    paymentStatus = PaymentStatus.Error;
+    setupError = response.message;
+    return;
+  } else if (response.client_secret) {
+    const stripe = getStripe();
+    const { error, paymentIntent } = await stripe.handleNextAction({
+      clientSecret: response.client_secret,
     });
-    const paymentElement = elements.create('payment');
-    paymentElement.mount(`#${el.id}`);
-  }
-
-  async function submitPaymentMethod() {
-    paymentStatus = PaymentStatus.Loading;
-
-    const url = new URL($props.finalize_url);
-    if (priceId) {
-      url.searchParams.set('price_id', priceId);
-    }
-
-    const { error, setupIntent } = await stripe.confirmSetup({
-      elements,
-      redirect: 'if_required',
-      confirmParams: {
-        return_url: url.toString(),
-      },
-    });
-
+    // stripe may have redirected to a different url at this point
     if (error) {
       paymentStatus = PaymentStatus.Error;
-      setupError = error.message;
+      setupError =
+        'Payment method could not be added. Please try a different payment method.';
       return;
+    } else if (paymentIntent?.status == 'succeeded') {
+      // todo: wait for webhook?
+      paymentStatus = PaymentStatus.Success;
+      return;
+    } else if (paymentIntent?.status == 'processing') {
+      // todo: ???
     }
-
-    if (setupIntent) {
-      const response = await api
-        .url('/store-payment')
-        .post({ payment_method_id: setupIntent.payment_method })
-        .json<{ props: Props }>();
-
-      $props = response.props;
-
-      if (priceId) {
-        // todo: hide elements in modal while this is processing
-        const response = await api
-          .url('/subscriptions')
-          .post({ price_id: priceId })
-          .json<{
-            props?: Props;
-            message?: string;
-          }>();
-
-        if (response.message) {
-          paymentStatus = PaymentStatus.Error;
-          setupError = response.message;
-          return;
-        }
-
-        if (response.props) {
-          $props = response.props;
-        }
-      }
-    }
-
-    // maybe won't reach if redirected, but some may succeed instantly
+  } else if (response.props) {
+    onSuccess({ props: response.props });
     paymentStatus = PaymentStatus.Success;
   }
+}
 
-  function onFinish() {
-    dispatch('close');
-  }
-
-  $: {
-    if (visible && !clientSecret) {
-      setupPaymentMethod();
-    }
-    if (!visible) {
-      clientSecret = '';
-      setupError = '';
-      paymentStatus = PaymentStatus.Idle;
-    }
-  }
+function onFinish() {
+  dispatch('close');
+}
 </script>
 
-<Modal {visible} on:close={() => dispatch('close')}>
+<Modal {visible} on:close={onFinish}>
   {#if paymentStatus === PaymentStatus.Success}
     <div>
       <div
@@ -138,12 +115,16 @@
           class="text-base font-semibold leading-6 text-gray-900"
           id="modal-title"
         >
-          Payment method saved
+          Success
         </h3>
         <div class="mt-2">
           <p class="text-sm text-gray-500">
-            Lorem ipsum dolor sit amet consectetur adipisicing elit. Consequatur
-            amet labore.
+            {#if priceId}
+              Your payment information and subscription were set up
+              successfully.
+            {:else}
+              Your Payment information was set up successfully.
+            {/if}
           </p>
         </div>
       </div>
@@ -151,23 +132,11 @@
     <div class="mt-5 sm:mt-6">
       <Button class="w-full justify-center" on:click={onFinish}>Finish</Button>
     </div>
-  {:else if clientSecret}
-    <form on:submit|preventDefault={submitPaymentMethod}>
-      <div id="stripe-payment-form" use:setupStripeElement />
-
-      {#if setupError}
-        <p class="text-red-600 mt-2">{setupError}</p>
-      {/if}
-
-      <div class="mt-4">
-        <Button
-          type="submit"
-          disabled={paymentStatus === PaymentStatus.Loading}
-          class="w-full justify-center"
-        >
-          Save
-        </Button>
-      </div>
-    </form>
+  {:else if paymentStatus === PaymentStatus.EnterPaymentInfo}
+    <PaymentElement {returnUrl} onSuccess={onPaymentSuccess} />
+  {:else if paymentStatus === PaymentStatus.SubmittingSubscription}
+    <p>Processing subscription...</p>
+  {:else if paymentStatus === PaymentStatus.Error}
+    <p>{setupError}</p>
   {/if}
 </Modal>

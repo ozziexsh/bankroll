@@ -1,83 +1,84 @@
 <script lang="ts">
-  import { api } from '../api';
-  import { props } from '../store';
-  import { getStripe } from '../stripe';
-  import type { Props } from '../types';
-  import Button from './Button.svelte';
-  import { onMount } from 'svelte';
+import { api } from '../api';
+import { props } from '../store';
+import { getStripe } from '../stripe';
+import type { Props } from '../types';
+import Button from './Button.svelte';
+import { onMount } from 'svelte';
 
-  export let onSuccess: (response: { props: Props }) => void;
-  export let returnUrl = $props.finalize_url;
+export let onSuccess: (response: { props: Props }) => void;
 
-  enum PaymentStatus {
-    GettingClientSecret,
-    EnteringCardInfo,
-    Submitting,
-    Success,
-    Error,
-  }
+export let returnUrl = $props.finalize_url;
 
-  const stripe = getStripe();
-  let clientSecret: string | null = null;
-  let elements;
-  let setupError = '';
-  let paymentStatus = PaymentStatus.GettingClientSecret;
+enum PaymentStatus {
+  GettingClientSecret,
+  EnteringCardInfo,
+  Submitting,
+  Success,
+  Error,
+}
 
-  onMount(async () => {
-    paymentStatus = PaymentStatus.GettingClientSecret;
-    await setupPaymentMethod();
-    paymentStatus = PaymentStatus.EnteringCardInfo;
+const stripe = getStripe();
+let clientSecret: string | null = null;
+let elements;
+let setupError = '';
+let paymentStatus = PaymentStatus.GettingClientSecret;
+
+onMount(async () => {
+  paymentStatus = PaymentStatus.GettingClientSecret;
+  await setupPaymentMethod();
+  paymentStatus = PaymentStatus.EnteringCardInfo;
+});
+
+async function setupPaymentMethod() {
+  const response = await api
+    .url('/setup-payment')
+    .post()
+    .json<{ client_secret: string }>();
+  clientSecret = response.client_secret;
+}
+
+function setupStripeElement(el: HTMLDivElement) {
+  elements = stripe.elements({
+    clientSecret: clientSecret,
+  });
+  const paymentElement = elements.create('payment');
+  paymentElement.mount(`#${el.id}`);
+}
+
+async function submitPaymentMethod() {
+  paymentStatus = PaymentStatus.Submitting;
+
+  const { error, setupIntent } = await stripe.confirmSetup({
+    elements,
+    redirect: 'if_required',
+    confirmParams: {
+      return_url: returnUrl,
+    },
   });
 
-  async function setupPaymentMethod() {
-    const response = await api
-      .url('/setup-payment')
-      .post()
-      .json<{ client_secret: string }>();
-    clientSecret = response.client_secret;
+  if (error) {
+    paymentStatus = PaymentStatus.Error;
+    setupError = error.message;
+    return;
   }
 
-  function setupStripeElement(el: HTMLDivElement) {
-    elements = stripe.elements({
-      clientSecret: clientSecret,
-    });
-    const paymentElement = elements.create('payment');
-    paymentElement.mount(`#${el.id}`);
+  if (!setupIntent) {
+    paymentStatus = PaymentStatus.Error;
+    setupError = 'Something went wrong. Please try again.';
+    return;
   }
 
-  async function submitPaymentMethod() {
-    paymentStatus = PaymentStatus.Submitting;
+  const response = await api
+    .url('/store-payment')
+    .post({ payment_method_id: setupIntent.payment_method })
+    .json<{ props: Props }>();
 
-    const { error, setupIntent } = await stripe.confirmSetup({
-      elements,
-      redirect: 'if_required',
-      confirmParams: {
-        return_url: returnUrl,
-      },
-    });
+  onSuccess(response);
 
-    if (error) {
-      paymentStatus = PaymentStatus.Error;
-      setupError = error.message;
-      return;
-    }
-
-    if (!setupIntent) {
-      paymentStatus = PaymentStatus.Error;
-      setupError = 'Something went wrong. Please try again.';
-      return;
-    }
-
-    const response = await api
-      .url('/store-payment')
-      .post({ payment_method_id: setupIntent.payment_method })
-      .json<{ props: Props }>();
-
-    onSuccess(response);
-
-    // maybe won't reach if redirected, but some may succeed instantly
-    paymentStatus = PaymentStatus.Success;
-  }
+  // maybe won't reach if redirected, but some may succeed instantly
+  paymentStatus = PaymentStatus.Success;
+}
 </script>
 
 {#if paymentStatus === PaymentStatus.GettingClientSecret}

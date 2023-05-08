@@ -1,100 +1,104 @@
 <script lang="ts">
-  import { api } from './api';
-  import Button from './components/Button.svelte';
-  import PaymentCard from './components/PaymentCard.svelte';
-  import PlanCard from './components/PlanCard.svelte';
-  import SetupPaymentModal from './components/SetupPaymentModal.svelte';
-  import Toggle from './components/Toggle.svelte';
-  import { props } from './store';
-  import type { Invoice, Plan, Props } from './types';
-  import { getStripe } from './stripe';
-  import Modal from './components/Modal.svelte';
+import { api } from './api';
+import Button from './components/Button.svelte';
+import PaymentCard from './components/PaymentCard.svelte';
+import PlanCard from './components/PlanCard.svelte';
+import SetupPaymentModal from './components/SetupPaymentModal.svelte';
+import Toggle from './components/Toggle.svelte';
+import { props } from './store';
+import type { Invoice, Plan, Props } from './types';
+import { getStripe } from './stripe';
+import Modal from './components/Modal.svelte';
 
-  export let _props: Props;
+export let _props: Props;
 
-  $props = _props;
+$props = _props;
 
-  let monthly = true;
-  let priceAfterPayment: string | null = null;
-  let paymentModalVisible = false;
-  let setupIntentModalVisible = false;
-  let setupIntentModalContent = '';
-  let loadingSubscription = false;
+let monthly = true;
+let priceAfterPayment: string | null = null;
+let paymentModalVisible = false;
+let setupIntentModalVisible = false;
+let setupIntentModalContent = '';
+let loadingSubscription = false;
 
-  async function onPlanSelected(plan: Plan) {
-    const priceId = monthly ? plan.prices.monthly.id : plan.prices.yearly.id;
+async function onPlanSelected(plan: Plan) {
+  const priceId = monthly ? plan.prices.monthly.id : plan.prices.yearly.id;
 
-    if (!$props.payment_method) {
-      priceAfterPayment = priceId;
-      paymentModalVisible = true;
-      return;
-    }
+  if (!$props.payment_method) {
+    priceAfterPayment = priceId;
+    paymentModalVisible = true;
+    return;
+  }
 
-    loadingSubscription = true;
+  loadingSubscription = true;
 
-    const response = await api
-      .url('/subscriptions')
-      .post({ price_id: priceId })
-      .json<{
-        props?: Props;
-        client_secret?: string;
-        message?: string;
-      }>();
+  const response = await api
+    .url('/subscriptions')
+    .post({ price_id: priceId })
+    .json<{
+      props?: Props;
+      client_secret?: string;
+      message?: string;
+    }>();
 
-    if (response.message) {
-      setupIntentModalContent = response.message;
+  if (response.message) {
+    setupIntentModalContent = response.message;
+    setupIntentModalVisible = true;
+  } else if (response.client_secret) {
+    const stripe = getStripe();
+    const { error, paymentIntent } = await stripe.handleNextAction({
+      clientSecret: response.client_secret,
+    });
+    // stripe may have redirected to a different url at this point
+    if (error) {
+      setupIntentModalContent =
+        'Payment method could not be added. Please try a different payment method.';
       setupIntentModalVisible = true;
-    } else if (response.client_secret) {
-      const stripe = getStripe();
-      const { error, paymentIntent } = await stripe.handleNextAction({
-        clientSecret: response.client_secret,
-      });
-      // stripe may have redirected to a different url at this point
-      if (error) {
-        setupIntentModalContent =
-          'Payment method could not be added. Please try a different payment method.';
-        setupIntentModalVisible = true;
-      } else if (paymentIntent?.status == 'succeeded') {
-        setupIntentModalContent = 'Payment confirmed successfully';
-        setupIntentModalVisible = true;
-      } else if (paymentIntent?.status == 'processing') {
-        // todo: ???
-      }
-    } else if (response.props) {
-      $props = response.props;
+    } else if (paymentIntent?.status == 'succeeded') {
+      setupIntentModalContent = 'Payment confirmed successfully';
+      setupIntentModalVisible = true;
+    } else if (paymentIntent?.status == 'processing') {
+      // todo: ???
     }
-
-    loadingSubscription = false;
-  }
-
-  async function cancelSubscription() {
-    loadingSubscription = true;
-    const response = await api
-      .url('/subscriptions')
-      .delete()
-      .json<{ props: Props }>();
+  } else if (response.props) {
     $props = response.props;
-    loadingSubscription = false;
   }
 
-  async function resumeSubscription() {
-    loadingSubscription = true;
-    const response = await api
-      .url('/subscriptions/resume')
-      .post()
-      .json<{ props: Props }>();
-    $props = response.props;
-    loadingSubscription = false;
-  }
+  loadingSubscription = false;
+}
 
-  function invoices() {
-    return api.url('/invoices').get().json<{ invoices: Invoice[] }>();
-  }
+async function cancelSubscription() {
+  loadingSubscription = true;
+  const response = await api
+    .url('/subscriptions')
+    .delete()
+    .json<{ props: Props }>();
+  $props = response.props;
+  loadingSubscription = false;
+}
 
-  function onPaymentModalClose() {
-    paymentModalVisible = false;
-    priceAfterPayment = null;
-  }
+async function resumeSubscription() {
+  loadingSubscription = true;
+  const response = await api
+    .url('/subscriptions/resume')
+    .post()
+    .json<{ props: Props }>();
+  $props = response.props;
+  loadingSubscription = false;
+}
+
+function invoices() {
+  return api.url('/invoices').get().json<{ invoices: Invoice[] }>();
+}
+
+function onPaymentModalClose() {
+  paymentModalVisible = false;
+  priceAfterPayment = null;
+}
+
+function onPaymentModalSuccess(response: { props: Props }) {
+  $props = response.props;
+}
 </script>
 
 <div class="p-12">
@@ -195,15 +199,19 @@
                 </h3>
                 <div class="mt-2 text-sm text-yellow-700">
                   <p>
-                    <span>It will expire on {$props.trial_ends_at}.</span>
+                    <!-- todo: does a sub delete when the trial runs out? -->
                     {#if $props.grace_period}
-                      <span>You can resubscribe by choosing a plan below.</span>
+                      You have cancelled the trial but you can continue using it
+                      until {$props.trial_ends_at}.
+                    {:else}
+                      Your trial will end on {$props.trial_ends_at} and your subscription
+                      will begin.
                     {/if}
                   </p>
                 </div>
-                {#if !$props.grace_period}
-                  <div class="mt-4">
-                    <div class="-mx-2 -my-1.5 flex">
+                <div class="mt-4">
+                  <div class="-mx-2 -my-1.5 flex">
+                    {#if !$props.grace_period}
                       <button
                         type="button"
                         class="rounded-md bg-yellow-50 px-2 py-1.5 text-sm font-medium text-yellow-800 hover:bg-yellow-100 focus:outline-none focus:ring-2 focus:ring-yellow-600 focus:ring-offset-2 focus:ring-offset-yellow-50"
@@ -211,16 +219,21 @@
                       >
                         Cancel Trial
                       </button>
-                    </div>
+                    {:else}
+                      <button
+                        type="button"
+                        class="rounded-md bg-yellow-50 px-2 py-1.5 text-sm font-medium text-yellow-800 hover:bg-yellow-100 focus:outline-none focus:ring-2 focus:ring-yellow-600 focus:ring-offset-2 focus:ring-offset-yellow-50"
+                        on:click={resumeSubscription}
+                      >
+                        Resume
+                      </button>
+                    {/if}
                   </div>
-                {:else}
-                  <!-- todo -->
-                {/if}
+                </div>
               </div>
             </div>
           </div>
         {/if}
-        <!-- todo: if trial canceled -> resume -->
 
         <div class="space-y-4">
           <div class="flex items-center space-x-4">
@@ -268,35 +281,38 @@
         {#await invoices()}
           <p>Loading...</p>
         {:then response}
-          <ul class="space-y-4">
-            <!-- todo: empty state -->
-            {#each response.invoices as invoice}
-              <li>
-                <a
-                  href={invoice.hosted_invoice_url}
-                  target="_blank"
-                  class="flex items-center space-x-4"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke-width="1.5"
-                    stroke="currentColor"
-                    class="w-6 h-6"
+          {#if response.invoices.length === 0}
+            <p>No invoices yet.</p>
+          {:else}
+            <ul class="space-y-4">
+              {#each response.invoices as invoice}
+                <li>
+                  <a
+                    href={invoice.hosted_invoice_url}
+                    target="_blank"
+                    class="flex items-center space-x-4"
                   >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"
-                    />
-                  </svg>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke-width="1.5"
+                      stroke="currentColor"
+                      class="w-6 h-6"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"
+                      />
+                    </svg>
 
-                  <span>{invoice.created}</span>
-                </a>
-              </li>
-            {/each}
-          </ul>
+                    <span>{invoice.created}</span>
+                  </a>
+                </li>
+              {/each}
+            </ul>
+          {/if}
         {/await}
       </div>
     </div>
@@ -306,6 +322,7 @@
 <SetupPaymentModal
   visible={paymentModalVisible}
   priceId={priceAfterPayment}
+  onSuccess={onPaymentModalSuccess}
   on:close={onPaymentModalClose}
 />
 

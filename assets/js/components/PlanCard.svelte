@@ -1,10 +1,10 @@
 <script lang="ts">
-  import type { Plan } from '../types';
+import type { Plan } from '../types';
 
-  export let plan: Plan;
-  export let monthly = true;
+export let plan: Plan;
+export let monthly = true;
 
-  $: price = monthly ? plan.prices.monthly : plan.prices.yearly;
+$: price = monthly ? plan.prices.monthly : plan.prices.yearly;
 </script>
 
 <div class="border border-gray-200 rounded-md p-4 space-y-2">

@@ -1,7 +1,7 @@
 <script lang="ts">
-  import Spin from './Spin.svelte';
+import Spin from './Spin.svelte';
 
-  export let loading: boolean = false;
+export let loading: boolean = false;
 </script>
 
 <button

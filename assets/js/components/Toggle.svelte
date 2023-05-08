@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { createEventDispatcher } from 'svelte';
+import { createEventDispatcher } from 'svelte';
 
-  export let enabled = false;
+export let enabled = false;
 </script>
 
 <button
