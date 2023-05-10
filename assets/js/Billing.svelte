@@ -6,11 +6,27 @@ import PlanCard from './components/PlanCard.svelte';
 import SetupPaymentModal from './components/SetupPaymentModal.svelte';
 import Toggle from './components/Toggle.svelte';
 import { props } from './store';
-import type { Invoice, Plan, Props } from './types';
+import type { Invoice, Plan, Props, Subscription } from './types';
 import { createOrUpdateSubscription, getStripe } from './stripe';
 import Modal from './components/Modal.svelte';
 import { initSocket } from './socket';
 import { onMount } from 'svelte';
+import Card from './components/Card.svelte';
+import CardIcon from './icons/CardIcon.svelte';
+import dayjs from 'dayjs';
+import Badge from './components/Badge.svelte';
+import ExternalLinkIcon from './icons/ExternalLinkIcon.svelte';
+import Alert from './components/Alert.svelte';
+import PlusIcon from './icons/PlusIcon.svelte';
+import ArrowPathIcon from './icons/ArrowPathIcon.svelte';
+import DangerConfirm from './components/DangerConfirm.svelte';
+
+enum PlanModalState {
+  Idle,
+  Loading,
+  Success,
+  Error,
+}
 
 export let _props: Props;
 
@@ -20,9 +36,18 @@ let monthly = true;
 let priceAfterPayment: string | null = null;
 let planAfterPayment: null | Plan = null;
 let paymentModalVisible = false;
-let setupIntentModalVisible = false;
-let setupIntentModalContent = '';
-let loadingSubscription = false;
+
+let newPlanSelect: string | null = null;
+let planSelectModalVisible = false;
+let planMessage = '';
+let planState = PlanModalState.Idle;
+
+let cancelModalVisible = false;
+let cancelLoading = false;
+
+let resumeLoading = false;
+
+$: activePlan = getActivePlan($props.subscription);
 
 onMount(() => {
   const socket = initSocket($props.current_user_id);
@@ -46,62 +71,69 @@ onMount(() => {
     });
 });
 
-async function onPlanSelected(plan: Plan) {
-  const priceId = monthly ? plan.prices.monthly.id : plan.prices.yearly.id;
-
-  if (!$props.payment_method) {
-    priceAfterPayment = priceId;
-    planAfterPayment = plan;
-    paymentModalVisible = true;
-    return;
+function getActivePlan(subscription: Subscription | null) {
+  if (!subscription) {
+    return null;
   }
 
-  loadingSubscription = true;
+  for (const plan of $props.plans) {
+    if (plan.prices.monthly?.id === subscription.stripe_price_id) {
+      return { plan, type: 'monthly' };
+    }
+    if (plan.prices.yearly?.id === subscription.stripe_price_id) {
+      return { plan, type: 'yearly' };
+    }
+  }
+
+  return null;
+}
+
+async function onPlanSelected() {
+  planState = PlanModalState.Loading;
 
   await createOrUpdateSubscription({
-    priceId,
+    priceId: newPlanSelect!,
     onErrorMessage(message) {
-      setupIntentModalContent = message;
-      setupIntentModalVisible = true;
+      planState = PlanModalState.Error;
+      planMessage = message;
     },
     onNextAction({ error, paymentIntent }) {
       if (error) {
-        setupIntentModalContent =
-          'Payment method could not be added. Please try a different payment method.';
-        setupIntentModalVisible = true;
+        planMessage =
+          'We failed to charge your payment method. Please try a different payment method.';
+        planState = PlanModalState.Error;
       } else if (paymentIntent?.status == 'succeeded') {
-        setupIntentModalContent = 'Payment confirmed successfully';
-        setupIntentModalVisible = true;
+        planState = PlanModalState.Success;
       } else if (paymentIntent?.status == 'processing') {
         // todo: ???
       }
     },
     onSuccess(response) {
       $props = response.props;
+      planState = PlanModalState.Success;
     },
   });
-
-  loadingSubscription = false;
 }
 
 async function cancelSubscription() {
-  loadingSubscription = true;
+  cancelLoading = true;
   const response = await api
     .url('/subscriptions')
     .delete()
     .json<{ props: Props }>();
   $props = response.props;
-  loadingSubscription = false;
+  cancelLoading = false;
+  cancelModalVisible = false;
 }
 
 async function resumeSubscription() {
-  loadingSubscription = true;
+  resumeLoading = true;
   const response = await api
     .url('/subscriptions/resume')
     .post()
     .json<{ props: Props }>();
   $props = response.props;
-  loadingSubscription = false;
+  resumeLoading = false;
 }
 
 function invoices() {
@@ -117,221 +149,186 @@ function onPaymentModalClose() {
 function onPaymentModalSuccess(response: { props: Props }) {
   $props = response.props;
 }
+
+function getPriceForView(plan: Plan) {
+  return monthly ? plan.prices.monthly : plan.prices.yearly;
+}
+
+function closePlanModal() {
+  planSelectModalVisible = false;
+  planState = PlanModalState.Idle;
+  planMessage = '';
+  newPlanSelect = null;
+}
 </script>
 
 <div class="p-12">
-  <p class="mb-4"><a href="/">Back to home</a></p>
-  <div class="flex items-start space-x-6">
-    <div class="w-1/3">
-      <PaymentCard />
-    </div>
-
-    <div class="flex-1">
-      <div class="space-y-6">
-        <div class="border-b border-gray-200 pb-5">
-          <h3 class="text-base font-semibold leading-6 text-gray-900">Plans</h3>
+  <div class="">
+    <div class="">
+      <div class="space-y-6 max-w-2xl mx-auto">
+        <div class="">
+          <p class="underline text-gray-900"><a href="/">← Back to app</a></p>
+          <h1 class="text-4xl font-bold mt-6">Acme Co</h1>
+          <h3 class="text-xl mt-2">Billing Portal</h3>
+          <p class="mt-2 text-gray-600 text-sm">
+            Customer: {$props.customer_display_name}
+          </p>
         </div>
 
-        {#if !$props.subscription}
-          <div class="rounded-md bg-yellow-50 p-4">
-            <div class="flex">
-              <div class="flex-shrink-0">
-                <svg
-                  class="h-5 w-5 text-yellow-400"
-                  viewBox="0 0 20 20"
-                  fill="currentColor"
-                  aria-hidden="true"
-                >
-                  <path
-                    fill-rule="evenodd"
-                    d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z"
-                    clip-rule="evenodd"
-                  />
-                </svg>
-              </div>
-              <div class="ml-3">
-                <h3 class="text-sm font-medium text-yellow-800">
-                  You are not subscribed to a plan
-                </h3>
-                <div class="mt-2 text-sm text-yellow-700">
-                  <p>Select a plan from the list below</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        {/if}
-        {#if $props.fix_subscription_url}
-          <div class="rounded-md bg-yellow-50 p-4">
-            <div class="flex">
-              <div class="flex-shrink-0">
-                <svg
-                  class="h-5 w-5 text-yellow-400"
-                  viewBox="0 0 20 20"
-                  fill="currentColor"
-                  aria-hidden="true"
-                >
-                  <path
-                    fill-rule="evenodd"
-                    d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z"
-                    clip-rule="evenodd"
-                  />
-                </svg>
-              </div>
-              <div class="ml-3">
-                <h3 class="text-sm font-medium text-yellow-800">
-                  We couldn't process your last payment and it is now overdue.
-                  Please fix the issue by visiting this link below.
-                </h3>
-                <div class="mt-4 text-sm text-yellow-700">
-                  <a
-                    href={$props.fix_subscription_url}
-                    class="rounded-md bg-yellow-50 px-2 py-1.5 text-sm font-medium text-yellow-800 hover:bg-yellow-100 focus:outline-none focus:ring-2 focus:ring-yellow-600 focus:ring-offset-2 focus:ring-offset-yellow-50"
-                  >
-                    Fix Issues
-                  </a>
-                </div>
-              </div>
-            </div>
-          </div>
-        {/if}
-        {#if $props.on_trial}
-          <div class="rounded-md bg-yellow-50 p-4">
-            <div class="flex">
-              <div class="flex-shrink-0">
-                <svg
-                  class="h-5 w-5 text-yellow-400"
-                  viewBox="0 0 20 20"
-                  fill="currentColor"
-                  aria-hidden="true"
-                >
-                  <path
-                    fill-rule="evenodd"
-                    d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z"
-                    clip-rule="evenodd"
-                  />
-                </svg>
-              </div>
-              <div class="ml-3">
-                <h3 class="text-sm font-medium text-yellow-800">
-                  You are currently on a trial
-                </h3>
-                <div class="mt-2 text-sm text-yellow-700">
-                  <p>
-                    <!-- todo: does a sub delete when the trial runs out? -->
-                    {#if $props.grace_period}
-                      You have cancelled the trial but you can continue using it
-                      until {$props.trial_ends_at}.
-                    {:else}
-                      Your trial will end on {$props.trial_ends_at} and your subscription
-                      will begin.
-                    {/if}
-                  </p>
-                </div>
-                <div class="mt-4">
-                  <div class="-mx-2 -my-1.5 flex">
-                    {#if !$props.grace_period}
-                      <button
-                        type="button"
-                        class="rounded-md bg-yellow-50 px-2 py-1.5 text-sm font-medium text-yellow-800 hover:bg-yellow-100 focus:outline-none focus:ring-2 focus:ring-yellow-600 focus:ring-offset-2 focus:ring-offset-yellow-50"
-                        on:click={cancelSubscription}
-                      >
-                        Cancel Trial
-                      </button>
-                    {:else}
-                      <button
-                        type="button"
-                        class="rounded-md bg-yellow-50 px-2 py-1.5 text-sm font-medium text-yellow-800 hover:bg-yellow-100 focus:outline-none focus:ring-2 focus:ring-yellow-600 focus:ring-offset-2 focus:ring-offset-yellow-50"
-                        on:click={resumeSubscription}
-                      >
-                        Resume
-                      </button>
-                    {/if}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        {/if}
-
-        <div class="space-y-4">
-          <div class="flex items-center space-x-4">
-            <span>Yearly</span>
-            <Toggle bind:enabled={monthly} />
-            <span>Monthly</span>
-          </div>
-          {#each $props.plans as plan}
-            <PlanCard {plan} {monthly}>
-              {#if $props.subscription?.stripe_price_id === (monthly ? plan.prices.monthly.id : plan.prices.yearly.id)}
-                {#if $props.grace_period}
-                  <Button
-                    on:click={resumeSubscription}
-                    loading={loadingSubscription}
-                  >
-                    Resume Subscription
-                  </Button>
-                {/if}
-                {#if $props.recurring}
-                  <Button
-                    on:click={() => cancelSubscription()}
-                    loading={loadingSubscription}
-                  >
-                    Cancel Subscription
-                  </Button>
-                {/if}
-              {:else}
+        <Card title="My Subscription">
+          {#if !$props.subscription}
+            <div class="text-center mt-6">
+              <ArrowPathIcon class="mx-auto h-12 w-12 text-gray-400" />
+              <h3 class="mt-2 text-sm font-semibold text-gray-900">
+                You do not have a subscription
+              </h3>
+              <p class="mt-1 text-sm text-gray-500">
+                Choose a plan to get started
+              </p>
+              <div class="mt-6">
                 <Button
-                  on:click={() => onPlanSelected(plan)}
-                  loading={loadingSubscription}
+                  type="button"
+                  on:click={() => (planSelectModalVisible = true)}
                 >
-                  {$props.subscription ? 'Change Plan' : 'Subscribe'}
+                  <PlusIcon class="-ml-0.5 mr-1.5 h-5 w-5" />
+                  Choose Plan
+                </Button>
+              </div>
+            </div>
+          {/if}
+          {#if $props.fix_subscription_url}
+            <Alert
+              title="We couldn't process your last payment and it is now overdue. Please fix the issue by visiting this link below."
+              linkText="Fix Issues"
+              linkHref={$props.fix_subscription_url}
+            />
+          {/if}
+          {#if $props.on_trial}
+            {#if $props.grace_period}
+              <Alert
+                title="You are currently on a trial"
+                description={`You have cancelled the trial but you can continue using it until ${$props.trial_ends_at}.`}
+              />
+            {:else}
+              <Alert
+                title="You are currently on a trial"
+                description={`Your trial will end on ${$props.trial_ends_at} and your subscription will begin.`}
+              />
+            {/if}
+          {/if}
+          {#if $props.canceled && $props.grace_period}
+            <Alert
+              title="Your subscription has been canceled"
+              description={`It will end on ${dayjs(
+                $props.subscription?.ends_at,
+              ).format('YYYY-MM-DD')}.`}
+            />
+          {/if}
+          {#if activePlan}
+            <div class="flex items-center space-x-2">
+              <h2 class="text-xl font-bold">{activePlan.plan.title}</h2>
+              <Badge variant="info">
+                {activePlan.type === 'monthly'
+                  ? activePlan.plan.prices.monthly.price
+                  : activePlan.plan.prices.yearly.price}
+                {activePlan.type}
+              </Badge>
+            </div>
+            <p class="text-gray-600 text-sm">{activePlan.plan.description}</p>
+            <div class="flex items-center space-x-2">
+              {#if !$props.canceled}
+                <Button on:click={() => (planSelectModalVisible = true)}>
+                  Change
+                </Button>
+                <Button
+                  variant="danger-ghost"
+                  on:click={() => (cancelModalVisible = true)}
+                >
+                  Cancel
+                </Button>
+              {:else if $props.canceled && $props.grace_period}
+                <Button on:click={resumeSubscription} loading={resumeLoading}>
+                  Resume Subscription
                 </Button>
               {/if}
-            </PlanCard>
-          {/each}
-        </div>
-
-        <div class="border-b border-gray-200 pb-5">
-          <h3 class="text-base font-semibold leading-6 text-gray-900">
-            Invoices
-          </h3>
-        </div>
-
-        {#await invoices()}
-          <p>Loading...</p>
-        {:then response}
-          {#if response.invoices.length === 0}
-            <p>No invoices yet.</p>
-          {:else}
-            <ul class="space-y-4">
-              {#each response.invoices as invoice}
-                <li>
-                  <a
-                    href={invoice.hosted_invoice_url}
-                    target="_blank"
-                    class="flex items-center space-x-4"
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke-width="1.5"
-                      stroke="currentColor"
-                      class="w-6 h-6"
-                    >
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"
-                      />
-                    </svg>
-
-                    <span>{invoice.created}</span>
-                  </a>
-                </li>
-              {/each}
-            </ul>
+            </div>
           {/if}
-        {/await}
+        </Card>
+
+        <Card title="Payment Methods">
+          {#if !$props.payment_method}
+            <div class="text-center mt-6">
+              <CardIcon class="mx-auto h-12 w-12 text-gray-400" />
+              <h3 class="mt-2 text-sm font-semibold text-gray-900">
+                No payment method
+              </h3>
+              <p class="mt-1 text-sm text-gray-500">
+                You need a payment method to subscribe
+              </p>
+              <div class="mt-6">
+                <Button
+                  type="button"
+                  on:click={() => (paymentModalVisible = true)}
+                >
+                  <PlusIcon class="-ml-0.5 mr-1.5 h-5 w-5" />
+                  Add Payment Method
+                </Button>
+              </div>
+            </div>
+          {:else}
+            <div
+              class="flex items-center justify-between p-2 border border-gray-200 rounded-lg"
+            >
+              <div class="flex items-center space-x-4">
+                <div class="flex items-center space-x-2">
+                  <CardIcon class="w-6 h-6" />
+                  <span>{$props.payment_method.payment_last_four}</span>
+                </div>
+                <Badge>default</Badge>
+              </div>
+              <div>
+                <Button
+                  on:click={() => (paymentModalVisible = true)}
+                  variant="info-ghost"
+                >
+                  Update
+                </Button>
+              </div>
+            </div>
+          {/if}
+        </Card>
+
+        <Card title="Invoices">
+          {#await invoices()}
+            <p>Loading...</p>
+          {:then response}
+            {#if response.invoices.length === 0}
+              <p>No invoices yet.</p>
+            {:else}
+              <ul class="space-y-4">
+                {#each response.invoices as invoice}
+                  <li>
+                    <a
+                      href={invoice.hosted_invoice_url}
+                      target="_blank"
+                      class="flex items-center space-x-4"
+                    >
+                      <span>
+                        {dayjs(invoice.created, 'YYYY-MM-DD').format(
+                          'MMMM D, YYYY',
+                        )}
+                      </span>
+
+                      <Badge>${(invoice.total / 100).toFixed(2)}</Badge>
+
+                      <ExternalLinkIcon class="w-4 h-4" />
+                    </a>
+                  </li>
+                {/each}
+              </ul>
+            {/if}
+          {/await}
+        </Card>
       </div>
     </div>
   </div>
@@ -345,12 +342,154 @@ function onPaymentModalSuccess(response: { props: Props }) {
   on:close={onPaymentModalClose}
 />
 
-<Modal
-  visible={setupIntentModalVisible}
-  on:close={() => {
-    setupIntentModalContent = '';
-    setupIntentModalVisible = false;
-  }}
->
-  <p>{setupIntentModalContent}</p>
+<Modal visible={planSelectModalVisible} on:close={closePlanModal}>
+  <div class="space-y-4">
+    <h3 class="text-base font-semibold leading-6 text-gray-900">
+      Select a plan
+    </h3>
+
+    <div class="flex items-center space-x-2">
+      <span>Yearly</span>
+      <Toggle bind:enabled={monthly} onChange={() => (newPlanSelect = null)} />
+      <span>Monthly</span>
+    </div>
+
+    <div>
+      <fieldset>
+        <legend class="sr-only">Plan selection</legend>
+        <div class="space-y-4">
+          {#key monthly}
+            {#each $props.plans as plan}
+              <!--
+            Checked: "border-transparent", Not Checked: "border-gray-300"
+            Active: "border-indigo-600 ring-2 ring-indigo-600"
+          -->
+              <label
+                class="relative block cursor-pointer rounded-lg border px-6 py-4 shadow-sm focus:outline-none sm:flex sm:justify-between"
+                class:border-gray-300={getPriceForView(plan).id !==
+                  newPlanSelect}
+                class:border-black={getPriceForView(plan).id === newPlanSelect}
+                class:ring-2={getPriceForView(plan).id === newPlanSelect}
+                class:ring-black={getPriceForView(plan).id === newPlanSelect}
+                class:bg-gray-100={$props.subscription?.stripe_price_id ===
+                  getPriceForView(plan).id}
+                class:bg-white={$props.subscription?.stripe_price_id !==
+                  getPriceForView(plan).id}
+              >
+                <input
+                  type="radio"
+                  name="server-size"
+                  value={getPriceForView(plan).id}
+                  bind:group={newPlanSelect}
+                  class="sr-only"
+                  aria-labelledby="server-size-0-label"
+                  aria-describedby="server-size-0-description-0 server-size-0-description-1"
+                  disabled={planState === PlanModalState.Loading ||
+                    $props.subscription?.stripe_price_id ===
+                      getPriceForView(plan).id}
+                />
+                <span class="flex items-center">
+                  <span class="flex flex-col text-sm">
+                    <span
+                      id="server-size-0-label"
+                      class="font-medium text-gray-900"
+                    >
+                      {plan.title}
+                      {#if plan.trial_days}<Badge variant="success">
+                          {plan.trial_days} day trial
+                        </Badge>
+                      {/if}
+                    </span>
+                    <span
+                      id="server-size-0-description-0"
+                      class="text-gray-500 text-sm"
+                    >
+                      <span>{plan.description}</span>
+
+                      <ul class="list-inside list-disc mt-2">
+                        {#each plan.features as feature}
+                          <li>{feature}</li>
+                        {/each}
+                      </ul>
+                      {#if $props.subscription?.stripe_price_id === getPriceForView(plan).id}
+                        <span class="inline-block mt-2">
+                          <Badge variant="info">
+                            This is your current plan
+                          </Badge>
+                        </span>
+                      {/if}
+                    </span>
+                  </span>
+                </span>
+                <span
+                  id="server-size-0-description-1"
+                  class="mt-2 flex text-sm sm:ml-4 sm:mt-0 sm:flex-col sm:text-right"
+                >
+                  <span class="font-medium text-gray-900">
+                    {getPriceForView(plan).price}
+                  </span>
+                  <span class="ml-1 text-gray-500 sm:ml-0">
+                    /{monthly ? 'mo' : 'yr'}
+                  </span>
+                </span>
+                <!--
+              Active: "border", Not Active: "border-2"
+              Checked: "border-indigo-600", Not Checked: "border-transparent"
+            -->
+                <span
+                  class="pointer-events-none absolute -inset-px rounded-lg border-2"
+                  aria-hidden="true"
+                />
+              </label>
+            {/each}
+          {/key}
+        </div>
+      </fieldset>
+    </div>
+
+    {#if activePlan}
+      {#if $props.on_trial}
+        <p>This will cancel your active trial and charge you immediately.</p>
+      {/if}
+      <Button
+        class="w-full text-center justify-center"
+        on:click={onPlanSelected}
+        disabled={!newPlanSelect || planState === PlanModalState.Loading}
+      >
+        Change Plan
+      </Button>
+    {:else if $props.payment_method}
+      <Button
+        class="w-full text-center justify-center"
+        on:click={onPlanSelected}
+        disabled={!newPlanSelect || planState === PlanModalState.Loading}
+      >
+        Subscribe
+      </Button>
+    {:else}
+      <Button
+        class="w-full text-center justify-center"
+        disabled={!newPlanSelect}
+        on:click={() => {
+          priceAfterPayment = newPlanSelect;
+          planAfterPayment = $props.plans.find(
+            plan => getPriceForView(plan).id === newPlanSelect,
+          );
+          paymentModalVisible = true;
+          closePlanModal();
+        }}
+      >
+        Enter Payment Info
+      </Button>
+    {/if}
+  </div>
 </Modal>
+
+<DangerConfirm
+  title="Cancel Subscription"
+  content="Are you sure you wish to cancel your subscription? You will be able to continue to use the product until the end of your billing period."
+  visible={cancelModalVisible}
+  on:close={() => (cancelModalVisible = false)}
+  on:confirm={cancelSubscription}
+  confirmLoading={cancelLoading}
+/>

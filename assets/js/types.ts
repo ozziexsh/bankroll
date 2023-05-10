@@ -1,4 +1,4 @@
-interface Subscription {
+export interface Subscription {
   plan: string;
   ends_at: null | string;
   trial_ends_at: null | string;
@@ -29,6 +29,8 @@ export interface Plan {
 export interface Invoice {
   hosted_invoice_url: string;
   created: string;
+  total: number;
+  currency: string;
 }
 
 type PaymentIntentStatus =
@@ -81,4 +83,5 @@ export interface Props {
   customer_id: string;
   customer_type: string;
   current_user_id: any; // todo
+  customer_display_name: string;
 }

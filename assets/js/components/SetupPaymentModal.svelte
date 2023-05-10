@@ -7,6 +7,7 @@ import Button from './Button.svelte';
 import Modal from './Modal.svelte';
 import PaymentElement from './PaymentElement.svelte';
 import { createOrUpdateSubscription, getStripe } from '../stripe';
+import Badge from './Badge.svelte';
 
 export let visible: boolean;
 export let priceId: null | string = null;
@@ -137,6 +138,9 @@ function onFinish() {
               {plan.title} @ {plan.prices.yearly.price}/year
             {/if}
           </h2>
+          {#if plan.trial_days}
+            <Badge variant="success">{plan.trial_days} day trial</Badge>
+          {/if}
           <p class="text-gray-600 text-sm">
             {plan.description}
           </p>

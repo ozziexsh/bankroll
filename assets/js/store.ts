@@ -18,4 +18,5 @@ export let props = writable<Props>({
   customer_id: '',
   customer_type: '',
   current_user_id: null,
+  customer_display_name: '',
 });

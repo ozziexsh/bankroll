@@ -11,7 +11,7 @@ function onSetupSuccess(response: { props: Props }) {
 }
 </script>
 
-<div class="rounded-md border border-gray-200 bg-gray-50 p-4">
+<div class="">
   <div class="border-b border-gray-200 pb-5">
     <h3 class="text-base font-semibold leading-6 text-gray-900">
       Payment Methods

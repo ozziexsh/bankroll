@@ -91,7 +91,8 @@ defmodule Bankroll.Controllers.BillingController do
         ),
       customer_id: conn.params["customer_id"],
       customer_type: conn.params["customer_type"],
-      current_user_id: bankroll.user_id_from_conn(conn)
+      current_user_id: bankroll.user_id_from_conn(conn),
+      customer_display_name: bankroll.customer_display_name(customer)
     }
   end
 
@@ -250,7 +251,9 @@ defmodule Bankroll.Controllers.BillingController do
       |> Enum.map(fn invoice ->
         %{
           hosted_invoice_url: invoice.hosted_invoice_url,
-          created: invoice.created |> DateTime.from_unix!() |> DateTime.to_date()
+          created: invoice.created |> DateTime.from_unix!() |> DateTime.to_date(),
+          total: invoice.total,
+          currency: invoice.currency
         }
       end)
 
