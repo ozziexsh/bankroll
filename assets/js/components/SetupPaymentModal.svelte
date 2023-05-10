@@ -2,14 +2,15 @@
 import { createEventDispatcher } from 'svelte';
 import { api } from '../api';
 import { props } from '../store';
-import type { Props } from '../types';
+import type { Plan, Props } from '../types';
 import Button from './Button.svelte';
 import Modal from './Modal.svelte';
 import PaymentElement from './PaymentElement.svelte';
-import { getStripe } from '../stripe';
+import { createOrUpdateSubscription, getStripe } from '../stripe';
 
 export let visible: boolean;
 export let priceId: null | string = null;
+export let plan: null | Plan = null;
 export let onSuccess: (response: { props: Props }) => void;
 const dispatch = createEventDispatcher();
 
@@ -47,41 +48,29 @@ async function onPaymentSuccess() {
 
   paymentStatus = PaymentStatus.SubmittingSubscription;
 
-  const response = await api
-    .url('/subscriptions')
-    .post({ price_id: priceId })
-    .json<{
-      props?: Props;
-      client_secret?: string;
-      message?: string;
-    }>();
-
-  if (response.message) {
-    paymentStatus = PaymentStatus.Error;
-    setupError = response.message;
-    return;
-  } else if (response.client_secret) {
-    const stripe = getStripe();
-    const { error, paymentIntent } = await stripe.handleNextAction({
-      clientSecret: response.client_secret,
-    });
-    // stripe may have redirected to a different url at this point
-    if (error) {
+  await createOrUpdateSubscription({
+    priceId,
+    onErrorMessage(message) {
       paymentStatus = PaymentStatus.Error;
-      setupError =
-        'Payment method could not be added. Please try a different payment method.';
-      return;
-    } else if (paymentIntent?.status == 'succeeded') {
-      // todo: wait for webhook?
+      setupError = message;
+    },
+    onNextAction({ error, paymentIntent }) {
+      if (error) {
+        paymentStatus = PaymentStatus.Error;
+        setupError =
+          'Payment method could not be added. Please try a different payment method.';
+      } else if (paymentIntent?.status == 'succeeded') {
+        // todo: wait for webhook?
+        paymentStatus = PaymentStatus.Success;
+      } else if (paymentIntent?.status == 'processing') {
+        // todo: ???
+      }
+    },
+    onSuccess(response) {
+      onSuccess({ props: response.props });
       paymentStatus = PaymentStatus.Success;
-      return;
-    } else if (paymentIntent?.status == 'processing') {
-      // todo: ???
-    }
-  } else if (response.props) {
-    onSuccess({ props: response.props });
-    paymentStatus = PaymentStatus.Success;
-  }
+    },
+  });
 }
 
 function onFinish() {
@@ -89,7 +78,7 @@ function onFinish() {
 }
 </script>
 
-<Modal {visible} on:close={onFinish}>
+<Modal {visible} on:close={onFinish} size={priceId ? '2xl' : 'lg'}>
   {#if paymentStatus === PaymentStatus.Success}
     <div>
       <div
@@ -133,7 +122,34 @@ function onFinish() {
       <Button class="w-full justify-center" on:click={onFinish}>Finish</Button>
     </div>
   {:else if paymentStatus === PaymentStatus.EnterPaymentInfo}
-    <PaymentElement {returnUrl} onSuccess={onPaymentSuccess} />
+    <div class="flex flex-col sm:flex-row">
+      <div class="flex-1">
+        <PaymentElement {returnUrl} onSuccess={onPaymentSuccess} />
+      </div>
+      {#if plan}
+        <div
+          class="sm:w-[40%] space-y-2 mt-4 sm:mt-0 sm:ml-4 py-2 px-4 rounded-lg bg-gray-100"
+        >
+          <h2 class="text-2xl font-semibold">
+            {#if plan.prices.monthly?.id == priceId}
+              {plan.title} @ {plan.prices.monthly.price}/month
+            {:else}
+              {plan.title} @ {plan.prices.yearly.price}/year
+            {/if}
+          </h2>
+          <p class="text-gray-600 text-sm">
+            {plan.description}
+          </p>
+          {#if plan.features.length}
+            <ul class="text-gray-600 text-sm list-inside list-disc">
+              {#each plan.features as feature}
+                <li>{feature}</li>
+              {/each}
+            </ul>
+          {/if}
+        </div>
+      {/if}
+    </div>
   {:else if paymentStatus === PaymentStatus.SubmittingSubscription}
     <p>Processing subscription...</p>
   {:else if paymentStatus === PaymentStatus.Error}

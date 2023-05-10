@@ -1,5 +1,5 @@
 <script lang="ts">
-import { api } from './api';
+import { api, fetchProps } from './api';
 import Button from './components/Button.svelte';
 import PaymentCard from './components/PaymentCard.svelte';
 import PlanCard from './components/PlanCard.svelte';
@@ -7,8 +7,10 @@ import SetupPaymentModal from './components/SetupPaymentModal.svelte';
 import Toggle from './components/Toggle.svelte';
 import { props } from './store';
 import type { Invoice, Plan, Props } from './types';
-import { getStripe } from './stripe';
+import { createOrUpdateSubscription, getStripe } from './stripe';
 import Modal from './components/Modal.svelte';
+import { initSocket } from './socket';
+import { onMount } from 'svelte';
 
 export let _props: Props;
 
@@ -16,53 +18,68 @@ $props = _props;
 
 let monthly = true;
 let priceAfterPayment: string | null = null;
+let planAfterPayment: null | Plan = null;
 let paymentModalVisible = false;
 let setupIntentModalVisible = false;
 let setupIntentModalContent = '';
 let loadingSubscription = false;
+
+onMount(() => {
+  const socket = initSocket($props.current_user_id);
+
+  const channel = socket.channel(
+    `bankroll:${$props.customer_type}:${$props.customer_id}`,
+    {},
+  );
+
+  channel.on('update', async payload => {
+    $props = (await fetchProps()).props;
+  });
+
+  channel
+    .join()
+    .receive('ok', resp => {
+      console.log('Joined successfully', resp);
+    })
+    .receive('error', resp => {
+      console.log('Unable to join', resp);
+    });
+});
 
 async function onPlanSelected(plan: Plan) {
   const priceId = monthly ? plan.prices.monthly.id : plan.prices.yearly.id;
 
   if (!$props.payment_method) {
     priceAfterPayment = priceId;
+    planAfterPayment = plan;
     paymentModalVisible = true;
     return;
   }
 
   loadingSubscription = true;
 
-  const response = await api
-    .url('/subscriptions')
-    .post({ price_id: priceId })
-    .json<{
-      props?: Props;
-      client_secret?: string;
-      message?: string;
-    }>();
-
-  if (response.message) {
-    setupIntentModalContent = response.message;
-    setupIntentModalVisible = true;
-  } else if (response.client_secret) {
-    const stripe = getStripe();
-    const { error, paymentIntent } = await stripe.handleNextAction({
-      clientSecret: response.client_secret,
-    });
-    // stripe may have redirected to a different url at this point
-    if (error) {
-      setupIntentModalContent =
-        'Payment method could not be added. Please try a different payment method.';
+  await createOrUpdateSubscription({
+    priceId,
+    onErrorMessage(message) {
+      setupIntentModalContent = message;
       setupIntentModalVisible = true;
-    } else if (paymentIntent?.status == 'succeeded') {
-      setupIntentModalContent = 'Payment confirmed successfully';
-      setupIntentModalVisible = true;
-    } else if (paymentIntent?.status == 'processing') {
-      // todo: ???
-    }
-  } else if (response.props) {
-    $props = response.props;
-  }
+    },
+    onNextAction({ error, paymentIntent }) {
+      if (error) {
+        setupIntentModalContent =
+          'Payment method could not be added. Please try a different payment method.';
+        setupIntentModalVisible = true;
+      } else if (paymentIntent?.status == 'succeeded') {
+        setupIntentModalContent = 'Payment confirmed successfully';
+        setupIntentModalVisible = true;
+      } else if (paymentIntent?.status == 'processing') {
+        // todo: ???
+      }
+    },
+    onSuccess(response) {
+      $props = response.props;
+    },
+  });
 
   loadingSubscription = false;
 }
@@ -94,6 +111,7 @@ function invoices() {
 function onPaymentModalClose() {
   paymentModalVisible = false;
   priceAfterPayment = null;
+  planAfterPayment = null;
 }
 
 function onPaymentModalSuccess(response: { props: Props }) {
@@ -105,7 +123,7 @@ function onPaymentModalSuccess(response: { props: Props }) {
   <p class="mb-4"><a href="/">Back to home</a></p>
   <div class="flex items-start space-x-6">
     <div class="w-1/3">
-      <PaymentCard bind:paymentMethod={$props.payment_method} />
+      <PaymentCard />
     </div>
 
     <div class="flex-1">
@@ -322,6 +340,7 @@ function onPaymentModalSuccess(response: { props: Props }) {
 <SetupPaymentModal
   visible={paymentModalVisible}
   priceId={priceAfterPayment}
+  plan={planAfterPayment}
   onSuccess={onPaymentModalSuccess}
   on:close={onPaymentModalClose}
 />

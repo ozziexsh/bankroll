@@ -6,7 +6,6 @@ defmodule Bankroll.Controllers.BillingController do
     formats: [:html, :json],
     layouts: [html: Bankroll.Controllers.Layouts]
 
-  plug(:put_root_layout, {Bankroll.Controllers.Layouts, :root})
   plug(:assign_customer)
 
   def assign_customer(conn, _) do
@@ -18,7 +17,8 @@ defmodule Bankroll.Controllers.BillingController do
 
     with schema when not is_nil(schema) <- billing.module_from_customer_type(customer_type),
          customer when not is_nil(customer) <- repo.get_by(schema, id: customer_id),
-         {:auth, true} <- {:auth, authorize.(conn, customer)} do
+         {:auth, true} <- {:auth, authorize.(conn, customer)},
+         :ok <- maybe_create_stripe_customer(customer) do
       conn |> assign(:customer, customer)
     else
       {:auth, _} ->
@@ -26,6 +26,16 @@ defmodule Bankroll.Controllers.BillingController do
 
       _ ->
         conn |> put_status(404) |> redirect(to: "/") |> halt()
+    end
+  end
+
+  defp maybe_create_stripe_customer(customer) do
+    if Billing.Customer.stripe_id(customer) do
+      :ok
+    else
+      Customers.create_stripe_customer(customer)
+
+      :ok
     end
   end
 
@@ -51,8 +61,15 @@ defmodule Bankroll.Controllers.BillingController do
     end
   end
 
+  def props(conn, _params) do
+    customer = conn.assigns.customer
+
+    conn |> json(%{props: get_props(conn, customer)})
+  end
+
   defp get_props(conn, customer) do
     subscription = Customers.subscription(customer)
+    bankroll = conn.assigns.bankroll
 
     %{
       payment_method: get_payment_method(customer),
@@ -71,7 +88,10 @@ defmodule Bankroll.Controllers.BillingController do
         if(subscription && subscription.trial_ends_at,
           do: subscription.trial_ends_at |> DateTime.to_date(),
           else: nil
-        )
+        ),
+      customer_id: conn.params["customer_id"],
+      customer_type: conn.params["customer_type"],
+      current_user_id: bankroll.user_id_from_conn(conn)
     }
   end
 
@@ -164,10 +184,15 @@ defmodule Bankroll.Controllers.BillingController do
         conn |> json(%{props: get_props(conn, customer)})
 
       payment? and not subscribed? ->
-        case Customers.create_subscription(customer, price_id, "default",
-               trial_period_days: trial_days,
-               return_url: "#{return_url}?price_id=#{price_id}"
-             ) do
+        subscription_result =
+          Customers.create_subscription(customer, price_id,
+            return_url: "#{return_url}?price_id=#{price_id}",
+            stripe: %{
+              trial_period_days: trial_days
+            }
+          )
+
+        case subscription_result do
           {:error, error} ->
             conn |> json(%{ok: false, message: error.user_message})
 

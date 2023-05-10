@@ -15,4 +15,7 @@ export let props = writable<Props>({
   payment_intent: null,
   setup_intent: null,
   fix_subscription_url: '',
+  customer_id: '',
+  customer_type: '',
+  current_user_id: null,
 });

@@ -1,4 +1,5 @@
 import wretch from 'wretch';
+import type { Props } from './types';
 
 const el = document.getElementById('__billing-app')!;
 const props = JSON.parse(el.dataset.props);
@@ -11,3 +12,28 @@ export const api = wretch(url.toString(), { mode: 'cors' }).headers({
     .querySelector('meta[name="csrf-token"]')
     .getAttribute('content'),
 });
+
+export function fetchProps() {
+  return api.url('/props').get().json<{ props: Props }>();
+}
+
+export function storePaymentMethod(paymentMethodId: string) {
+  return api
+    .url('/store-payment')
+    .post({ payment_method_id: paymentMethodId })
+    .json<{ props: Props }>();
+}
+
+export function storeSubscription(priceId: string) {
+  return api.url('/subscriptions').post({ price_id: priceId }).json<
+    | {
+        props: Props;
+      }
+    | {
+        client_secret: string;
+      }
+    | {
+        message: string;
+      }
+  >();
+}

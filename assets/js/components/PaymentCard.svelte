@@ -4,14 +4,6 @@ import type { Props } from '../types';
 import Button from './Button.svelte';
 import SetupPaymentModal from './SetupPaymentModal.svelte';
 
-interface PaymentMethod {
-  payment_id: string;
-  payment_type: string;
-  payment_last_four: string;
-}
-
-export let paymentMethod: null | PaymentMethod;
-
 let modalVisible = false;
 
 function onSetupSuccess(response: { props: Props }) {
@@ -26,7 +18,7 @@ function onSetupSuccess(response: { props: Props }) {
     </h3>
   </div>
 
-  {#if !paymentMethod}
+  {#if !$props.payment_method}
     <div class="text-center mt-6">
       <svg
         xmlns="http://www.w3.org/2000/svg"
@@ -66,7 +58,8 @@ function onSetupSuccess(response: { props: Props }) {
     </div>
   {:else}
     <p class="text-gray-800 mt-4">
-      Your payment method on file is a {paymentMethod.payment_type} ending in {paymentMethod.payment_last_four}
+      Your payment method on file is a {$props.payment_method.payment_type} ending
+      in {$props.payment_method.payment_last_four}
     </p>
     <div class="mt-4">
       <Button on:click={() => (modalVisible = true)}>Update</Button>

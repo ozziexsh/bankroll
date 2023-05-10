@@ -2,8 +2,8 @@
 import { onMount } from 'svelte';
 import { props } from './store';
 import type { Props } from './types';
-import { getStripe } from './stripe';
-import { api } from './api';
+import { createOrUpdateSubscription, getStripe } from './stripe';
+import { api, storePaymentMethod } from './api';
 import Modal from './components/Modal.svelte';
 import PaymentElement from './components/PaymentElement.svelte';
 
@@ -28,6 +28,9 @@ let paymentModalMessage = '';
 let setupModalStatus: null | SetupPaymentStatus = null;
 let setupModalMessage = '';
 
+let pageLoading = false;
+let pageError = '';
+
 let priceId = new URLSearchParams(window.location.search).get('price_id');
 let returnUrl = getReturnUrl();
 
@@ -49,7 +52,7 @@ async function checkForPaymentIntent() {
   if (!paymentIntent) {
     return;
   }
-  // todo: loading
+  pageLoading = true;
   if (
     paymentIntent.status === 'requires_confirmation' ||
     paymentIntent.status === 'incomplete'
@@ -62,55 +65,63 @@ async function checkForPaymentIntent() {
       },
     });
     if (response.error) {
-      // todo: show response.error.message
+      pageError = response.error.message;
     }
   } else if (paymentIntent.status === 'requires_action') {
     const actionResult = await stripe.handleNextAction({
       clientSecret: paymentIntent.client_secret,
     });
     if (actionResult.error) {
-      // todo
+      pageError = actionResult.error.message;
     } else if (actionResult.paymentIntent) {
       paymentIntent = actionResult.paymentIntent;
     }
   }
+  pageLoading = false;
 }
 
 async function checkForSetupIntent() {
   if (!setupIntent) {
     return;
   }
+  pageLoading = true;
   if (setupIntent.status == 'succeeded') {
-    // todo: loading
-    const response = await api
-      .url('/store-payment')
-      .post({ payment_method_id: setupIntent.payment_method })
-      .json<{ props: Props }>();
+    await storePaymentMethod(setupIntent.payment_method);
 
     const setupPriceId = new URLSearchParams(window.location.search).get(
       'price_id',
     );
 
     if (setupPriceId) {
-      // todo
-      const response = await api
-        .url('/subscriptions')
-        .post({ price_id: setupPriceId })
-        .json<{
-          props: Props;
-        }>();
+      await createOrUpdateSubscription({
+        priceId: setupPriceId,
+        onErrorMessage(message) {
+          pageError = message;
+        },
+        onNextAction(response) {
+          if (response.error) {
+            pageError = response.error;
+          } else if (response.paymentIntent) {
+            setupIntent = null;
+            paymentIntent = response.paymentIntent;
+          }
+        },
+        onSuccess(response) {
+          $props = response.props;
+        },
+      });
     }
   } else if (setupIntent.status === 'requires_action') {
-    // todo: loading
     const actionResult = await stripe.handleNextAction({
       clientSecret: setupIntent.client_secret,
     });
     if (actionResult.error) {
-      // todo
+      pageError = actionResult.error.message;
     } else if (actionResult.setupIntent) {
       setupIntent = actionResult.setupIntent;
     }
   }
+  pageLoading = false;
 }
 
 function openPaymentModal() {
@@ -173,7 +184,9 @@ function onSetupSuccess() {
       {paymentIntent.currency.toUpperCase()}
     </h2>
 
-    {#if paymentIntent.status === 'succeeded'}
+    {#if pageLoading}
+      <p>Loading...</p>
+    {:else if paymentIntent.status === 'succeeded'}
       <p>
         This payment succeeded. <a href={$props.base_url}>
           Go back to the portal
@@ -231,7 +244,9 @@ function onSetupSuccess() {
 
   {#if setupIntent}
     <h2 class="text-4xl font-semibold">Setup payment method</h2>
-    {#if setupIntent.status === 'succeeded'}
+    {#if pageLoading}
+      <p>Loading...</p>
+    {:else if setupIntent.status === 'succeeded'}
       <p>
         Payment method successfully added. <a href={$props.base_url}>
           Go back to the portal

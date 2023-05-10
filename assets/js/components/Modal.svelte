@@ -1,8 +1,21 @@
-<script>
+<script lang="ts">
 import { createEventDispatcher } from 'svelte';
 import { scale, fade } from 'svelte/transition';
 
+type Size = 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' | '4xl';
+
 export let visible;
+export let size: Size = 'lg';
+
+let sizeMap = {
+  sm: 'sm:max-w-sm',
+  md: 'sm:max-w-md',
+  lg: 'sm:max-w-lg',
+  xl: 'sm:max-w-xl',
+  '2xl': 'sm:max-w-2xl',
+  '3xl': 'sm:max-w-3xl',
+  '4xl': 'sm:max-w-4xl',
+};
 
 const dispatch = createEventDispatcher();
 </script>
@@ -27,7 +40,7 @@ const dispatch = createEventDispatcher();
       >
         <div
           transition:scale={{ duration: 250 }}
-          class="relative transform overflow-hidden rounded-lg bg-white px-4 pb-4 pt-5 text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg sm:p-6"
+          class={`relative transform overflow-hidden rounded-lg bg-white px-4 pb-4 pt-5 text-left shadow-xl transition-all sm:my-8 sm:w-full ${sizeMap[size]} sm:p-6`}
           on:click={e => e.stopPropagation()}
         >
           <slot />

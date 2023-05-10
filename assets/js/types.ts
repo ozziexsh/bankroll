@@ -78,4 +78,7 @@ export interface Props {
   payment_intent: null | PaymentIntent;
   setup_intent: null | SetupIntent;
   fix_subscription_url: string | null;
+  customer_id: string;
+  customer_type: string;
+  current_user_id: any; // todo
 }

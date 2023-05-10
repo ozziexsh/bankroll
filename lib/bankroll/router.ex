@@ -1,10 +1,16 @@
 defmodule Bankroll.Router do
-  defmacro billing_route(path \\ "/billing", opts \\ []) do
+  defmacro billing_route(path \\ "/billing", _opts \\ []) do
     quote do
+      pipeline :bankroll_portal do
+        plug(:put_root_layout, {Bankroll.Controllers.Layouts, :root})
+      end
+
       Phoenix.Router.scope unquote(path), as: false, alias: false do
         Phoenix.Router.scope "/:customer_type/:customer_id" do
+          pipe_through([:bankroll_portal])
+
           opts = [
-            assigns: %{bankroll: unquote(opts[:bankroll]), route_helpers: __MODULE__.Helpers}
+            assigns: %{route_helpers: __MODULE__.Helpers}
           ]
 
           Phoenix.Router.get(
