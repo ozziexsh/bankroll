@@ -1,8 +1,6 @@
 <script lang="ts">
 import { api, fetchProps } from './api';
 import Button from './components/Button.svelte';
-import PaymentCard from './components/PaymentCard.svelte';
-import PlanCard from './components/PlanCard.svelte';
 import SetupPaymentModal from './components/SetupPaymentModal.svelte';
 import Toggle from './components/Toggle.svelte';
 import { props } from './store';
@@ -216,12 +214,18 @@ function closePlanModal() {
               />
             {/if}
           {/if}
-          {#if $props.canceled && $props.grace_period}
+          {#if $props.canceled && !$props.on_trial && $props.grace_period}
             <Alert
               title="Your subscription has been canceled"
               description={`It will end on ${dayjs(
                 $props.subscription?.ends_at,
               ).format('YYYY-MM-DD')}.`}
+            />
+          {/if}
+          {#if $props.ended}
+            <Alert
+              title="Your subscription has ended"
+              description={'To resubscribe, choose a plan below.'}
             />
           {/if}
           {#if activePlan}
@@ -235,22 +239,30 @@ function closePlanModal() {
               </Badge>
             </div>
             <p class="text-gray-600 text-sm">{activePlan.plan.description}</p>
-            <div class="flex items-center space-x-2">
-              {#if !$props.canceled}
-                <Button on:click={() => (planSelectModalVisible = true)}>
-                  Change
-                </Button>
-                <Button
-                  variant="danger-ghost"
-                  on:click={() => (cancelModalVisible = true)}
-                >
-                  Cancel
-                </Button>
-              {:else if $props.canceled && $props.grace_period}
-                <Button on:click={resumeSubscription} loading={resumeLoading}>
-                  Resume Subscription
-                </Button>
-              {/if}
+            <div>
+              <div class="flex items-center space-x-2 mt-6">
+                {#if !$props.canceled}
+                  {#if $props.subscription?.status !== 'incomplete'}
+                    <Button on:click={() => (planSelectModalVisible = true)}>
+                      Change
+                    </Button>
+                  {/if}
+                  <Button
+                    variant="basic"
+                    on:click={() => (cancelModalVisible = true)}
+                  >
+                    Cancel
+                  </Button>
+                {:else if $props.canceled && $props.grace_period}
+                  <Button on:click={resumeSubscription} loading={resumeLoading}>
+                    Resume Subscription
+                  </Button>
+                {:else if $props.ended}
+                  <Button on:click={() => (planSelectModalVisible = true)}>
+                    Select a plan
+                  </Button>
+                {/if}
+              </div>
             </div>
           {/if}
         </Card>
@@ -289,7 +301,7 @@ function closePlanModal() {
               <div>
                 <Button
                   on:click={() => (paymentModalVisible = true)}
-                  variant="info-ghost"
+                  variant="basic"
                 >
                   Update
                 </Button>
@@ -313,13 +325,16 @@ function closePlanModal() {
                       target="_blank"
                       class="flex items-center space-x-4"
                     >
-                      <span>
+                      <span class="text-sm">
                         {dayjs(invoice.created, 'YYYY-MM-DD').format(
                           'MMMM D, YYYY',
                         )}
                       </span>
 
                       <Badge>${(invoice.total / 100).toFixed(2)}</Badge>
+                      <Badge class="uppercase" variant="success">
+                        {invoice.status}
+                      </Badge>
 
                       <ExternalLinkIcon class="w-4 h-4" />
                     </a>
@@ -372,7 +387,7 @@ function closePlanModal() {
                 class:ring-2={getPriceForView(plan).id === newPlanSelect}
                 class:ring-black={getPriceForView(plan).id === newPlanSelect}
                 class:bg-gray-100={$props.subscription?.stripe_price_id ===
-                  getPriceForView(plan).id}
+                  getPriceForView(plan).id && !$props.ended}
                 class:bg-white={$props.subscription?.stripe_price_id !==
                   getPriceForView(plan).id}
               >
@@ -385,8 +400,9 @@ function closePlanModal() {
                   aria-labelledby="server-size-0-label"
                   aria-describedby="server-size-0-description-0 server-size-0-description-1"
                   disabled={planState === PlanModalState.Loading ||
-                    $props.subscription?.stripe_price_id ===
-                      getPriceForView(plan).id}
+                    ($props.subscription?.stripe_price_id ===
+                      getPriceForView(plan).id &&
+                      !$props.ended)}
                 />
                 <span class="flex items-center">
                   <span class="flex flex-col text-sm">
@@ -394,8 +410,9 @@ function closePlanModal() {
                       id="server-size-0-label"
                       class="font-medium text-gray-900"
                     >
-                      {plan.title}
-                      {#if plan.trial_days}<Badge variant="success">
+                      <span>{plan.title}</span>
+                      {#if plan.trial_days && !$props.subscription}
+                        <Badge variant="success">
                           {plan.trial_days} day trial
                         </Badge>
                       {/if}
@@ -411,7 +428,7 @@ function closePlanModal() {
                           <li>{feature}</li>
                         {/each}
                       </ul>
-                      {#if $props.subscription?.stripe_price_id === getPriceForView(plan).id}
+                      {#if $props.subscription?.stripe_price_id === getPriceForView(plan).id && !$props.ended}
                         <span class="inline-block mt-2">
                           <Badge variant="info">
                             This is your current plan
@@ -448,9 +465,6 @@ function closePlanModal() {
     </div>
 
     {#if activePlan}
-      {#if $props.on_trial}
-        <p>This will cancel your active trial and charge you immediately.</p>
-      {/if}
       <Button
         class="w-full text-center justify-center"
         on:click={onPlanSelected}

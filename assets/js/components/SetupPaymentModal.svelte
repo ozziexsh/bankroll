@@ -138,7 +138,7 @@ function onFinish() {
               {plan.title} @ {plan.prices.yearly.price}/year
             {/if}
           </h2>
-          {#if plan.trial_days}
+          {#if plan.trial_days && !$props.subscription}
             <Badge variant="success">{plan.trial_days} day trial</Badge>
           {/if}
           <p class="text-gray-600 text-sm">

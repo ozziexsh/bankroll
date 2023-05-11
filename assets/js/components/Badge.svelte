@@ -12,7 +12,7 @@ const classMap = {
 </script>
 
 <span
-  class={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ${classMap[variant]}`}
+  class={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ${classMap[variant]} ${$$props.class}`}
 >
   <slot />
 </span>

@@ -31,6 +31,7 @@ export interface Invoice {
   created: string;
   total: number;
   currency: string;
+  status: string;
 }
 
 type PaymentIntentStatus =
@@ -84,4 +85,5 @@ export interface Props {
   customer_type: string;
   current_user_id: any; // todo
   customer_display_name: string;
+  ended: boolean;
 }
