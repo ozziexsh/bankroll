@@ -101,7 +101,8 @@ defmodule Bankroll.Controllers.BillingController do
         )
 
       payment? and subscribed? ->
-        Subscriptions.update(subscription, price_id)
+        prices = Keyword.put([], price_id, 1)
+        Subscriptions.change_prices(subscription, prices: prices)
         conn |> json(%{props: get_props(conn)})
 
       not payment? and not subscribed? ->
@@ -154,7 +155,10 @@ defmodule Bankroll.Controllers.BillingController do
   end
 
   defp create_subscription(conn, customer, price_id, opts) do
-    subscription_result = Customers.create_subscription(customer, price_id, opts)
+    prices = Keyword.put([], price_id, 1)
+
+    subscription_result =
+      Customers.create_subscription(customer, Keyword.put(opts, :prices, prices))
 
     case subscription_result do
       {:error, error} ->
