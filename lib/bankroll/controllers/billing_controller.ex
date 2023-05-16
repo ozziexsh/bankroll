@@ -6,47 +6,12 @@ defmodule Bankroll.Controllers.BillingController do
     formats: [:html, :json],
     layouts: [html: Bankroll.Controllers.Layouts]
 
-  plug(:assign_customer)
-
-  def assign_customer(conn, _) do
-    %{"customer_type" => customer_type, "customer_id" => customer_id} = conn.params
-    bankroll = conn.assigns.bankroll
-    billing = bankroll.billing()
-    repo = billing.repo()
-    authorize = &bankroll.can_manage_billing?/2
-
-    with schema when not is_nil(schema) <- billing.module_from_customer_type(customer_type),
-         customer when not is_nil(customer) <- repo.get_by(schema, id: customer_id),
-         {:auth, true} <- {:auth, authorize.(conn, customer)},
-         :ok <- maybe_create_stripe_customer(customer) do
-      conn |> assign(:customer, customer)
-    else
-      {:auth, _} ->
-        conn |> put_status(401) |> redirect(to: "/") |> halt()
-
-      _ ->
-        conn |> put_status(404) |> redirect(to: "/") |> halt()
-    end
-  end
+  plug(Billing.Plugs.AssignCustomer)
 
   def index(conn, _params) do
     conn
     |> assign(:props, get_props(conn))
-    |> assign(:view, "index")
     |> render(:index)
-  end
-
-  def finalize(conn, _params) do
-    props = get_props(conn)
-
-    if props.payment_intent || props.setup_intent do
-      conn
-      |> assign(:props, props)
-      |> assign(:view, "finalize")
-      |> render(:index)
-    else
-      redirect(conn, external: billing_url(conn))
-    end
   end
 
   def props(conn, _params) do
@@ -57,14 +22,6 @@ defmodule Bankroll.Controllers.BillingController do
     intent = Billing.Customers.create_setup_intent(conn.assigns.customer)
 
     conn |> json(%{client_secret: intent.client_secret})
-  end
-
-  def store_payment(conn, params) do
-    customer =
-      conn.assigns.customer
-      |> Billing.Customers.update_default_payment_method(params["payment_method_id"])
-
-    conn |> assign(:customer, customer) |> json(%{props: get_props(conn)})
   end
 
   def store_subscription(conn, params) do
@@ -118,7 +75,7 @@ defmodule Bankroll.Controllers.BillingController do
     subscription = Customers.subscription(customer)
 
     if subscription do
-      Subscriptions.cancel!(subscription)
+      Subscriptions.cancel(subscription)
     end
 
     conn |> json(%{props: get_props(conn)})
@@ -176,16 +133,6 @@ defmodule Bankroll.Controllers.BillingController do
     end
   end
 
-  defp maybe_create_stripe_customer(customer) do
-    if Billing.Customer.stripe_id(customer) do
-      :ok
-    else
-      Customers.create_stripe_customer(customer)
-
-      :ok
-    end
-  end
-
   defp get_props(conn) do
     customer = conn.assigns.customer
     subscription = Customers.subscription(customer)
@@ -193,8 +140,6 @@ defmodule Bankroll.Controllers.BillingController do
 
     %{
       payment_method: get_payment_method(customer),
-      payment_intent: maybe_get_payment_intent(conn, conn.assigns.customer),
-      setup_intent: maybe_get_setup_intent(conn, conn.assigns.customer),
       subscription: subscription,
       valid: if(subscription, do: Subscriptions.valid?(subscription), else: nil),
       grace_period: if(subscription, do: Subscriptions.grace_period?(subscription), else: nil),
@@ -214,7 +159,8 @@ defmodule Bankroll.Controllers.BillingController do
       customer_id: conn.params["customer_id"],
       customer_type: conn.params["customer_type"],
       current_user_id: bankroll.user_id_from_conn(conn),
-      customer_display_name: bankroll.customer_display_name(customer)
+      customer_display_name: bankroll.customer_display_name(customer),
+      company_display_name: bankroll.company_name()
     }
   end
 
@@ -235,35 +181,11 @@ defmodule Bankroll.Controllers.BillingController do
 
   defp fix_subscription_url(_, _), do: nil
 
-  defp maybe_get_setup_intent(conn, customer) do
-    id = Map.get(conn.params, "setup_intent")
-
-    with id when not is_nil(id) <- id,
-         {:ok, intent} <- Stripe.SetupIntent.retrieve(id, %{}),
-         true <- intent.customer == customer.stripe_id do
-      Map.take(intent, [:id, :client_secret, :status, :payment_method])
-    else
-      _ -> nil
-    end
-  end
-
-  defp maybe_get_payment_intent(conn, customer) do
-    id = Map.get(conn.params, "payment_intent")
-
-    with id when not is_nil(id) <- id,
-         {:ok, intent} <- Stripe.PaymentIntent.retrieve(id, %{}),
-         true <- intent.customer == customer.stripe_id do
-      Map.take(intent, [:id, :client_secret, :amount, :currency, :status])
-    else
-      _ -> nil
-    end
-  end
-
   defp finalize_url(conn) do
     customer_type = conn.params["customer_type"]
     customer_id = conn.params["customer_id"]
     router = conn.assigns.route_helpers
-    router.bankroll_finalize_url(conn, :finalize, customer_type, customer_id)
+    router.billing_finalize_url(conn, :finalize, customer_type, customer_id)
   end
 
   defp billing_url(conn) do

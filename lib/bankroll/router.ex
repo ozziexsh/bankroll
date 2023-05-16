@@ -1,5 +1,5 @@
 defmodule Bankroll.Router do
-  defmacro billing_route(path \\ "/billing", _opts \\ []) do
+  defmacro bankroll_route(path \\ "/billing", _opts \\ []) do
     quote do
       pipeline :bankroll_portal do
         plug(:put_root_layout, {Bankroll.Controllers.Layouts, :root})
@@ -20,31 +20,10 @@ defmodule Bankroll.Router do
             Keyword.merge(opts, as: :bankroll_root)
           )
 
-          Phoenix.Router.get(
-            "/finalize",
-            Bankroll.Controllers.BillingController,
-            :finalize,
-            Keyword.merge(opts, as: :bankroll_finalize)
-          )
-
           Phoenix.Router.post(
             "/setup-payment",
             Bankroll.Controllers.BillingController,
             :setup_payment,
-            opts
-          )
-
-          Phoenix.Router.post(
-            "/store-payment",
-            Bankroll.Controllers.BillingController,
-            :store_payment,
-            opts
-          )
-
-          Phoenix.Router.get(
-            "/setup-payment-return",
-            Bankroll.Controllers.BillingController,
-            :setup_payment_return,
             opts
           )
 

@@ -78,12 +78,11 @@ export interface Props {
   finalize_url: string;
   on_trial: boolean;
   trial_ends_at: null | string;
-  payment_intent: null | PaymentIntent;
-  setup_intent: null | SetupIntent;
   fix_subscription_url: string | null;
   customer_id: string;
   customer_type: string;
   current_user_id: any; // todo
   customer_display_name: string;
+  company_display_name: string;
   ended: boolean;
 }

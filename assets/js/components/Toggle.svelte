@@ -10,7 +10,7 @@ function onClick() {
 
 <button
   type="button"
-  class="group relative inline-flex h-5 w-10 flex-shrink-0 cursor-pointer items-center justify-center rounded-full focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2"
+  class="group relative inline-flex h-5 w-10 flex-shrink-0 cursor-pointer items-center justify-center rounded-full focus:outline-none focus:ring-2 focus:ring-gray-600 focus:ring-offset-2"
   role="switch"
   aria-checked={enabled ? 'true' : 'false'}
   on:click={onClick}
@@ -22,7 +22,7 @@ function onClick() {
   />
   <span
     aria-hidden="true"
-    class:bg-indigo-600={enabled}
+    class:bg-black={enabled}
     class:bg-gray-200={!enabled}
     class="pointer-events-none absolute mx-auto h-4 w-9 rounded-full transition-colors duration-200 ease-in-out"
   />

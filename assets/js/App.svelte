@@ -47,27 +47,27 @@ let resumeLoading = false;
 
 $: activePlan = getActivePlan($props.subscription);
 
-onMount(() => {
-  const socket = initSocket($props.current_user_id);
+// onMount(() => {
+//   const socket = initSocket($props.current_user_id);
 
-  const channel = socket.channel(
-    `bankroll:${$props.customer_type}:${$props.customer_id}`,
-    {},
-  );
+//   const channel = socket.channel(
+//     `bankroll:${$props.customer_type}:${$props.customer_id}`,
+//     {},
+//   );
 
-  channel.on('update', async payload => {
-    $props = (await fetchProps()).props;
-  });
+//   channel.on('update', async payload => {
+//     $props = (await fetchProps()).props;
+//   });
 
-  channel
-    .join()
-    .receive('ok', resp => {
-      console.log('Joined successfully', resp);
-    })
-    .receive('error', resp => {
-      console.log('Unable to join', resp);
-    });
-});
+//   channel
+//     .join()
+//     .receive('ok', resp => {
+//       console.log('Joined successfully', resp);
+//     })
+//     .receive('error', resp => {
+//       console.log('Unable to join', resp);
+//     });
+// });
 
 function getActivePlan(subscription: Subscription | null) {
   if (!subscription) {
@@ -160,190 +160,220 @@ function closePlanModal() {
 }
 </script>
 
-<div class="p-12">
+<div class="">
   <div class="">
     <div class="">
-      <div class="space-y-6 max-w-2xl mx-auto">
-        <div class="">
-          <p class="underline text-gray-900"><a href="/">← Back to app</a></p>
-          <h1 class="text-4xl font-bold mt-6">Acme Co</h1>
+      <div class="bg-white px-4 py-12 border-b border-b-gray-200">
+        <div class="max-w-2xl mx-auto">
+          <p class="hover:underline text-gray-900">
+            <a href="/">← Back to app</a>
+          </p>
+          <h1 class="text-4xl font-bold mt-6">{$props.company_display_name}</h1>
           <h3 class="text-xl mt-2">Billing Portal</h3>
           <p class="mt-2 text-gray-600 text-sm">
             Customer: {$props.customer_display_name}
           </p>
         </div>
-
-        <Card title="My Subscription">
-          {#if !$props.subscription}
-            <div class="text-center mt-6">
-              <ArrowPathIcon class="mx-auto h-12 w-12 text-gray-400" />
-              <h3 class="mt-2 text-sm font-semibold text-gray-900">
-                You do not have a subscription
-              </h3>
-              <p class="mt-1 text-sm text-gray-500">
-                Choose a plan to get started
-              </p>
-              <div class="mt-6">
-                <Button
-                  type="button"
-                  on:click={() => (planSelectModalVisible = true)}
-                >
-                  <PlusIcon class="-ml-0.5 mr-1.5 h-5 w-5" />
-                  Choose Plan
-                </Button>
+      </div>
+      <div class="py-12 px-4">
+        <div class="max-w-2xl mx-auto space-y-6">
+          <Card title="My Subscription">
+            {#if !$props.subscription}
+              <div class="text-center mt-6">
+                <ArrowPathIcon class="mx-auto h-12 w-12 text-gray-400" />
+                <h3 class="mt-2 text-sm font-semibold text-gray-900">
+                  You do not have a subscription
+                </h3>
+                <p class="mt-1 text-sm text-gray-500">
+                  Choose a plan to get started
+                </p>
+                <div class="mt-6">
+                  <Button
+                    type="button"
+                    on:click={() => (planSelectModalVisible = true)}
+                  >
+                    <PlusIcon class="-ml-0.5 mr-1.5 h-5 w-5" />
+                    Choose Plan
+                  </Button>
+                </div>
               </div>
-            </div>
-          {/if}
-          {#if $props.fix_subscription_url}
-            <Alert
-              title="We couldn't process your last payment and it is now overdue. Please fix the issue by visiting this link below."
-              linkText="Fix Issues"
-              linkHref={$props.fix_subscription_url}
-            />
-          {/if}
-          {#if $props.on_trial}
-            {#if $props.grace_period}
+            {/if}
+            {#if $props.fix_subscription_url}
               <Alert
-                title="You are currently on a trial"
-                description={`You have cancelled the trial but you can continue using it until ${$props.trial_ends_at}.`}
-              />
-            {:else}
-              <Alert
-                title="You are currently on a trial"
-                description={`Your trial will end on ${$props.trial_ends_at} and your subscription will begin.`}
+                title="We couldn't process your last payment and it is now overdue. Please fix the issue by visiting this link below."
+                linkText="Fix Issues"
+                linkHref={$props.fix_subscription_url}
               />
             {/if}
-          {/if}
-          {#if $props.canceled && !$props.on_trial && $props.grace_period}
-            <Alert
-              title="Your subscription has been canceled"
-              description={`It will end on ${dayjs(
-                $props.subscription?.ends_at,
-              ).format('YYYY-MM-DD')}.`}
-            />
-          {/if}
-          {#if $props.ended}
-            <Alert
-              title="Your subscription has ended"
-              description={'To resubscribe, choose a plan below.'}
-            />
-          {/if}
-          {#if activePlan}
-            <div class="flex items-center space-x-2">
-              <h2 class="text-xl font-bold">{activePlan.plan.title}</h2>
-              <Badge variant="info">
-                {activePlan.type === 'monthly'
-                  ? activePlan.plan.prices.monthly.price
-                  : activePlan.plan.prices.yearly.price}
-                {activePlan.type}
-              </Badge>
-            </div>
-            <p class="text-gray-600 text-sm">{activePlan.plan.description}</p>
-            <div>
-              <div class="flex items-center space-x-2 mt-6">
-                {#if !$props.canceled}
-                  {#if $props.subscription?.status !== 'incomplete'}
-                    <Button on:click={() => (planSelectModalVisible = true)}>
-                      Change
-                    </Button>
-                  {/if}
-                  <Button
-                    variant="basic"
-                    on:click={() => (cancelModalVisible = true)}
-                  >
-                    Cancel
-                  </Button>
-                {:else if $props.canceled && $props.grace_period}
-                  <Button on:click={resumeSubscription} loading={resumeLoading}>
-                    Resume Subscription
-                  </Button>
-                {:else if $props.ended}
-                  <Button on:click={() => (planSelectModalVisible = true)}>
-                    Select a plan
-                  </Button>
-                {/if}
-              </div>
-            </div>
-          {/if}
-        </Card>
-
-        <Card title="Payment Methods">
-          {#if !$props.payment_method}
-            <div class="text-center mt-6">
-              <CardIcon class="mx-auto h-12 w-12 text-gray-400" />
-              <h3 class="mt-2 text-sm font-semibold text-gray-900">
-                No payment method
-              </h3>
-              <p class="mt-1 text-sm text-gray-500">
-                You need a payment method to subscribe
-              </p>
-              <div class="mt-6">
-                <Button
-                  type="button"
-                  on:click={() => (paymentModalVisible = true)}
-                >
-                  <PlusIcon class="-ml-0.5 mr-1.5 h-5 w-5" />
-                  Add Payment Method
-                </Button>
-              </div>
-            </div>
-          {:else}
-            <div
-              class="flex items-center justify-between p-2 border border-gray-200 rounded-lg"
-            >
-              <div class="flex items-center space-x-4">
-                <div class="flex items-center space-x-2">
-                  <CardIcon class="w-6 h-6" />
-                  <span>{$props.payment_method.payment_last_four}</span>
-                </div>
-                <Badge>default</Badge>
+            {#if $props.on_trial}
+              {#if $props.grace_period}
+                <Alert
+                  title="You are currently on a trial"
+                  description={`You have cancelled the trial but you can continue using it until ${$props.trial_ends_at}.`}
+                />
+              {:else}
+                <Alert
+                  title="You are currently on a trial"
+                  description={`Your trial will end on ${$props.trial_ends_at} and your subscription will begin.`}
+                />
+              {/if}
+            {/if}
+            {#if $props.canceled && !$props.on_trial && $props.grace_period}
+              <Alert
+                title="Your subscription has been canceled"
+                description={`It will end on ${dayjs(
+                  $props.subscription?.ends_at,
+                ).format('YYYY-MM-DD')}.`}
+              />
+            {/if}
+            {#if $props.ended}
+              <Alert
+                title="Your subscription has ended"
+                description={'To resubscribe, choose a plan below.'}
+              />
+            {/if}
+            {#if activePlan}
+              <div class="mt-2 max-w-xl text-sm text-gray-500">
+                <p>
+                  You are currently subscribed to the {activePlan.plan.title} plan
+                  @ {activePlan.type === 'monthly'
+                    ? activePlan.plan.prices.monthly.price
+                    : activePlan.plan.prices.yearly.price}
+                  {activePlan.type}.
+                </p>
               </div>
               <div>
-                <Button
-                  on:click={() => (paymentModalVisible = true)}
-                  variant="basic"
-                >
-                  Update
-                </Button>
-              </div>
-            </div>
-          {/if}
-        </Card>
-
-        <Card title="Invoices">
-          {#await invoices()}
-            <p>Loading...</p>
-          {:then response}
-            {#if response.invoices.length === 0}
-              <p>No invoices yet.</p>
-            {:else}
-              <ul class="space-y-4">
-                {#each response.invoices as invoice}
-                  <li>
-                    <a
-                      href={invoice.hosted_invoice_url}
-                      target="_blank"
-                      class="flex items-center space-x-4"
+                <div class="flex items-center space-x-2 mt-5">
+                  {#if !$props.canceled}
+                    {#if $props.subscription?.status !== 'incomplete'}
+                      <Button
+                        variant="default"
+                        on:click={() => (planSelectModalVisible = true)}
+                      >
+                        Change Plan
+                      </Button>
+                    {/if}
+                    <Button
+                      variant="danger-ghost"
+                      on:click={() => (cancelModalVisible = true)}
                     >
-                      <span class="text-sm">
-                        {dayjs(invoice.created, 'YYYY-MM-DD').format(
-                          'MMMM D, YYYY',
-                        )}
-                      </span>
-
-                      <Badge>${(invoice.total / 100).toFixed(2)}</Badge>
-                      <Badge class="uppercase" variant="success">
-                        {invoice.status}
-                      </Badge>
-
-                      <ExternalLinkIcon class="w-4 h-4" />
-                    </a>
-                  </li>
-                {/each}
-              </ul>
+                      Cancel Subscription
+                    </Button>
+                  {:else if $props.canceled && $props.grace_period}
+                    <Button
+                      on:click={resumeSubscription}
+                      loading={resumeLoading}
+                    >
+                      Resume Subscription
+                    </Button>
+                  {:else if $props.ended}
+                    <Button on:click={() => (planSelectModalVisible = true)}>
+                      Select A Plan
+                    </Button>
+                  {/if}
+                </div>
+              </div>
             {/if}
-          {/await}
-        </Card>
+          </Card>
+
+          <Card title="Payment Methods">
+            {#if !$props.payment_method}
+              <div class="text-center mt-6">
+                <CardIcon class="mx-auto h-12 w-12 text-gray-400" />
+                <h3 class="mt-2 text-sm font-semibold text-gray-900">
+                  No payment method
+                </h3>
+                <p class="mt-1 text-sm text-gray-500">
+                  You need a payment method to subscribe
+                </p>
+                <div class="mt-6">
+                  <Button
+                    type="button"
+                    on:click={() => (paymentModalVisible = true)}
+                  >
+                    <PlusIcon class="-ml-0.5 mr-1.5 h-5 w-5" />
+                    Add Payment Method
+                  </Button>
+                </div>
+              </div>
+            {:else}
+              <div
+                class="flex items-center justify-between p-2 bg-gray-50 rounded-lg"
+              >
+                <div class="flex items-center space-x-2">
+                  <CardIcon class="w-6 h-6" />
+                  <span class="text-sm font-medium text-gray-900">
+                    Ending with {$props.payment_method.payment_last_four}
+                  </span>
+                </div>
+                <div>
+                  <Button
+                    on:click={() => (paymentModalVisible = true)}
+                    variant="basic"
+                  >
+                    Update
+                  </Button>
+                </div>
+              </div>
+            {/if}
+          </Card>
+
+          <Card title="Invoices">
+            {#await invoices()}
+              <p>Loading...</p>
+            {:then response}
+              {#if response.invoices.length === 0}
+                <p>No invoices yet.</p>
+              {:else}
+                <ul class="divide-y divide-gray-100">
+                  {#each response.invoices as invoice}
+                    <li class="flex items-center justify-between gap-x-6 py-5">
+                      <div class="min-w-0">
+                        <div class="flex items-start gap-x-3">
+                          <p
+                            class="text-sm font-semibold leading-6 text-gray-900"
+                          >
+                            <time datetime={invoice.created}>
+                              {dayjs(invoice.created, 'YYYY-MM-DD').format(
+                                'MMMM D, YYYY',
+                              )}
+                            </time>
+                          </p>
+                          {#if invoice.status === 'paid'}
+                            <Badge variant="success">PAID</Badge>
+                          {:else}
+                            <Badge class="uppercase">{invoice.status}</Badge>
+                          {/if}
+                        </div>
+                        <div
+                          class="mt-0 flex items-center gap-x-2 text-xs leading-5 text-gray-500"
+                        >
+                          <p class="truncate">
+                            ${(invoice.total / 100).toFixed(2)}
+                          </p>
+                        </div>
+                      </div>
+                      <div class="flex flex-none items-center gap-x-4">
+                        <a
+                          href={invoice.hosted_invoice_url}
+                          class="inline-flex items-center rounded-md px-2.5 py-1.5 text-sm disabled:bg-opacity-70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 shadow-sm bg-white text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
+                          target="_blank"
+                        >
+                          View Invoice
+                          <span class="sr-only">
+                            {dayjs(invoice.created, 'YYYY-MM-DD').format(
+                              'MMMM D, YYYY',
+                            )}
+                          </span>
+                        </a>
+                      </div>
+                    </li>
+                  {/each}
+                </ul>
+              {/if}
+            {/await}
+          </Card>
+        </div>
       </div>
     </div>
   </div>

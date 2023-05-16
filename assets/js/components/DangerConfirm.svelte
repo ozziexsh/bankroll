@@ -56,7 +56,7 @@ const dispatch = createEventDispatcher();
       {confirmText}
     </Button>
     <Button type="button" variant="basic" on:click={() => dispatch('close')}>
-      I've changed my mind
+      Nevermind
     </Button>
   </div>
 </Modal>
