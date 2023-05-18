@@ -1,5 +1,5 @@
 export interface Subscription {
-  plan: string;
+  name: string;
   ends_at: null | string;
   trial_ends_at: null | string;
   stripe_id: string;

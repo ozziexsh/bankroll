@@ -33,9 +33,22 @@ defmodule Bankroll.Controllers.BillingController do
     plan = conn.assigns.bankroll.plan_from_price_id(price_id)
     trial_days = plan[:trial_days]
     return_url = finalize_url(conn)
-    repo = conn.assigns.bankroll.billing.repo()
+    bankroll = conn.assigns.bankroll
+    repo = bankroll.billing.repo()
+    exported? = Kernel.function_exported?(bankroll, :can_subscribe_to_plan?, 2)
+
+    can_subscribe =
+      if exported? do
+        bankroll.can_subscribe_to_plan?(customer, plan)
+      else
+        :ok
+      end
 
     cond do
+      can_subscribe != :ok ->
+        {:error, reason} = can_subscribe
+        conn |> json(%{ok: false, message: reason})
+
       subscription && Subscriptions.ended?(subscription) ->
         # delete old subscription, create new one without trial
         items = Subscriptions.subscription_items(subscription)
@@ -140,7 +153,7 @@ defmodule Bankroll.Controllers.BillingController do
 
     %{
       payment_method: get_payment_method(customer),
-      subscription: subscription,
+      subscription: prepare_subscription(subscription),
       valid: if(subscription, do: Subscriptions.valid?(subscription), else: nil),
       grace_period: if(subscription, do: Subscriptions.grace_period?(subscription), else: nil),
       ended: if(subscription, do: Subscriptions.ended?(subscription), else: nil),
@@ -199,4 +212,34 @@ defmodule Bankroll.Controllers.BillingController do
 
   defp get_payment_method(customer),
     do: Map.take(customer, [:payment_id, :payment_type, :payment_last_four])
+
+  defp prepare_subscription(subscription) do
+    if subscription do
+      bare =
+        Map.take(subscription, [
+          :name,
+          :ends_at,
+          :trial_ends_at,
+          :stripe_id,
+          :stripe_price_id,
+          :stripe_status,
+          :quantity,
+          :customer_id,
+          :customer_type
+        ])
+
+      items =
+        if(is_list(subscription.items),
+          do:
+            Enum.map(subscription.items, fn item ->
+              Map.take(item, [:stripe_id, :stripe_price_id, :stripe_product_id, :quantity])
+            end),
+          else: []
+        )
+
+      Map.merge(bare, %{subscription_items: items})
+    else
+      nil
+    end
+  end
 end

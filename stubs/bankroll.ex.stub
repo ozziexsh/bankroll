@@ -1,0 +1,48 @@
+defmodule <%= @module_name %>.Bankroll do
+  use Bankroll, billing: <%= @module_name %>.Billing
+
+  def plans do
+    [
+      %{
+        title: "Plus",
+        description: "Describe the plus plan here.",
+        features: [
+          "Unlimited devices"
+        ],
+        trial_days: 7,
+        prices: %{
+          monthly: %{id: "price_1234", price: "$5"},
+          yearly: %{id: "price_1234", price: "$50"}
+        }
+      },
+      %{
+        title: "Pro",
+        description: "Describe the pro plan here.",
+        features: [
+          "Unlimited devices",
+          "Media Uploads"
+        ],
+        prices: %{
+          monthly: %{id: "price_1234", price: "$10"},
+          yearly: %{id: "price_1234", price: "$100"}
+        }
+      }
+    ]
+  end
+
+  def company_name() do
+    "<%= @module_name %>"
+  end
+
+  def user_id_from_conn(conn) do
+    conn.assigns.current_user.id
+  end
+
+  def user_from_id(id) do
+    <%= @module_name %>.Repo.get(<%= @module_name %>.Accounts.User, id)
+  end
+
+  def customer_display_name(customer) do
+    customer.email
+  end
+end
