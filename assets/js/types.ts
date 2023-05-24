@@ -4,8 +4,6 @@ export interface Subscription {
   trial_ends_at: null | string;
   stripe_id: string;
   stripe_status: string;
-  stripe_price_id: string;
-  quantity: number;
   subscription_items: Array<{
     stripe_id: string;
     stripe_product_id: string;

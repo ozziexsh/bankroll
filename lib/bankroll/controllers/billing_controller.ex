@@ -1,12 +1,12 @@
 defmodule Bankroll.Controllers.BillingController do
-  alias Billing.Subscriptions
-  alias Billing.Customers
+  alias Bling.Subscriptions
+  alias Bling.Customers
 
   use Phoenix.Controller,
     formats: [:html, :json],
     layouts: [html: Bankroll.Controllers.Layouts]
 
-  plug(Billing.Plugs.AssignCustomer)
+  plug(Bling.Plugs.AssignCustomer)
 
   def index(conn, _params) do
     conn
@@ -19,7 +19,7 @@ defmodule Bankroll.Controllers.BillingController do
   end
 
   def setup_payment(conn, _params) do
-    intent = Billing.Customers.create_setup_intent(conn.assigns.customer)
+    intent = Bling.Customers.create_setup_intent(conn.assigns.customer)
 
     conn |> json(%{client_secret: intent.client_secret})
   end
@@ -34,15 +34,10 @@ defmodule Bankroll.Controllers.BillingController do
     trial_days = plan[:trial_days]
     return_url = finalize_url(conn)
     bankroll = conn.assigns.bankroll
-    repo = bankroll.billing.repo()
-    exported? = Kernel.function_exported?(bankroll, :can_subscribe_to_plan?, 2)
+    repo = bankroll.bling().repo()
 
     can_subscribe =
-      if exported? do
-        bankroll.can_subscribe_to_plan?(customer, plan)
-      else
-        :ok
-      end
+      Bling.Util.maybe_call({bankroll, :can_subscribe_to_plan?, [customer, plan]}, :ok)
 
     cond do
       can_subscribe != :ok ->
@@ -59,19 +54,19 @@ defmodule Bankroll.Controllers.BillingController do
           return_url: "#{return_url}?price_id=#{price_id}"
         )
 
-      subscription && subscription.stripe_price_id == price_id ->
+      subscription && Enum.at(subscription.subscription_items, 0).stripe_price_id == price_id ->
         conn |> json(%{props: get_props(conn)})
 
       payment? and not subscribed? ->
+        params = if trial_days, do: %{trial_period_days: trial_days}, else: %{}
+
         create_subscription(conn, customer, price_id,
           return_url: "#{return_url}?price_id=#{price_id}",
-          stripe: %{
-            trial_period_days: trial_days
-          }
+          stripe: params
         )
 
       payment? and subscribed? ->
-        prices = Keyword.put([], price_id, 1)
+        prices = [{price_id, 1}]
         Subscriptions.change_prices(subscription, prices: prices)
         conn |> json(%{props: get_props(conn)})
 
@@ -125,7 +120,7 @@ defmodule Bankroll.Controllers.BillingController do
   end
 
   defp create_subscription(conn, customer, price_id, opts) do
-    prices = Keyword.put([], price_id, 1)
+    prices = [{price_id, 1}]
 
     subscription_result =
       Customers.create_subscription(customer, Keyword.put(opts, :prices, prices))
@@ -171,7 +166,8 @@ defmodule Bankroll.Controllers.BillingController do
       fix_subscription_url: fix_subscription_url(conn, subscription),
       customer_id: conn.params["customer_id"],
       customer_type: conn.params["customer_type"],
-      current_user_id: bankroll.user_id_from_conn(conn),
+      # current_user_id: bankraoll.user_id_from_conn(conn),
+      current_user_id: nil,
       customer_display_name: bankroll.customer_display_name(customer),
       company_display_name: bankroll.company_name()
     }
@@ -198,7 +194,7 @@ defmodule Bankroll.Controllers.BillingController do
     customer_type = conn.params["customer_type"]
     customer_id = conn.params["customer_id"]
     router = conn.assigns.route_helpers
-    router.billing_finalize_url(conn, :finalize, customer_type, customer_id)
+    router.bling_finalize_url(conn, :finalize, customer_type, customer_id)
   end
 
   defp billing_url(conn) do
@@ -221,17 +217,15 @@ defmodule Bankroll.Controllers.BillingController do
           :ends_at,
           :trial_ends_at,
           :stripe_id,
-          :stripe_price_id,
           :stripe_status,
-          :quantity,
           :customer_id,
           :customer_type
         ])
 
       items =
-        if(is_list(subscription.items),
+        if(is_list(subscription.subscription_items),
           do:
-            Enum.map(subscription.items, fn item ->
+            Enum.map(subscription.subscription_items, fn item ->
               Map.take(item, [:stripe_id, :stripe_price_id, :stripe_product_id, :quantity])
             end),
           else: []

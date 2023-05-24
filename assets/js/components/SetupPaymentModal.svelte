@@ -1,6 +1,6 @@
 <script lang="ts">
 import { createEventDispatcher } from 'svelte';
-import { api } from '../api';
+import { api, fetchProps } from '../api';
 import { props } from '../store';
 import type { Plan, Props } from '../types';
 import Button from './Button.svelte';
@@ -43,6 +43,7 @@ function getReturnUrl() {
 
 async function onPaymentSuccess() {
   if (!priceId) {
+    onSuccess(await fetchProps());
     paymentStatus = PaymentStatus.Success;
     return;
   }

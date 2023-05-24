@@ -26,7 +26,7 @@ defmodule Bankroll.MixProject do
       {:plug, "~> 1.14"},
       {:stripity_stripe, "~> 2.17"},
       {:phoenix_live_view, "~> 0.18.16"},
-      {:billing, path: "../billing"}
+      {:bling, "~> 0.1.0"}
     ]
   end
 end

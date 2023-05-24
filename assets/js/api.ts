@@ -1,7 +1,7 @@
 import wretch from 'wretch';
 import type { Props } from './types';
 
-const el = document.getElementById('__billing-app')!;
+const el = document.getElementById('__bankroll-app')!;
 const props = JSON.parse(el.dataset.props);
 
 const url = new URL(props.base_url);
@@ -19,7 +19,7 @@ export function fetchProps() {
 
 export function storePaymentMethod(paymentMethodId: string) {
   return api
-    .url('/store-payment')
+    .url('/payment-method')
     .post({ payment_method_id: paymentMethodId })
     .json<{ props: Props }>();
 }

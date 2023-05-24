@@ -1,5 +1,5 @@
 defmodule <%= @module_name %>.Bankroll do
-  use Bankroll, billing: <%= @module_name %>.Billing
+  use Bankroll, bling: <%= @module_name %>.Bling
 
   def plans do
     [
@@ -32,14 +32,6 @@ defmodule <%= @module_name %>.Bankroll do
 
   def company_name() do
     "<%= @module_name %>"
-  end
-
-  def user_id_from_conn(conn) do
-    conn.assigns.current_user.id
-  end
-
-  def user_from_id(id) do
-    <%= @module_name %>.Repo.get(<%= @module_name %>.Accounts.User, id)
   end
 
   def customer_display_name(customer) do

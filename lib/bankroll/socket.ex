@@ -1,4 +1,6 @@
 defmodule Bankroll.Socket do
+  @moduledoc false
+
   use Phoenix.Socket
 
   defmacro __using__(opts \\ []) do

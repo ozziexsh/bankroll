@@ -45,6 +45,8 @@ let cancelLoading = false;
 
 let resumeLoading = false;
 
+let invoicePromise: null | ReturnType<typeof invoices> = null;
+
 $: activePlan = getActivePlan($props.subscription);
 
 // onMount(() => {
@@ -69,17 +71,27 @@ $: activePlan = getActivePlan($props.subscription);
 //     });
 // });
 
+onMount(() => {
+  invoicePromise = invoices();
+});
+
 function getActivePlan(subscription: Subscription | null) {
   if (!subscription) {
     return null;
   }
 
   for (const plan of $props.plans) {
-    if (plan.prices.monthly?.id === subscription.stripe_price_id) {
-      return { plan, type: 'monthly' };
+    if (
+      plan.prices.monthly?.id ===
+      subscription.subscription_items[0].stripe_price_id
+    ) {
+      return { plan, price: plan.prices.monthly.id, type: 'monthly' };
     }
-    if (plan.prices.yearly?.id === subscription.stripe_price_id) {
-      return { plan, type: 'yearly' };
+    if (
+      plan.prices.yearly?.id ===
+      subscription.subscription_items[0].stripe_price_id
+    ) {
+      return { plan, price: plan.prices.yearly.id, type: 'yearly' };
     }
   }
 
@@ -109,6 +121,7 @@ async function onPlanSelected() {
     onSuccess(response) {
       $props = response.props;
       planState = PlanModalState.Success;
+      invoicePromise = invoices();
     },
   });
 }
@@ -146,6 +159,7 @@ function onPaymentModalClose() {
 
 function onPaymentModalSuccess(response: { props: Props }) {
   $props = response.props;
+  invoicePromise = invoices();
 }
 
 function getPriceForView(plan: Plan) {
@@ -319,59 +333,63 @@ function closePlanModal() {
           </Card>
 
           <Card title="Invoices">
-            {#await invoices()}
-              <p>Loading...</p>
-            {:then response}
-              {#if response.invoices.length === 0}
-                <p>No invoices yet.</p>
-              {:else}
-                <ul class="divide-y divide-gray-100">
-                  {#each response.invoices as invoice}
-                    <li class="flex items-center justify-between gap-x-6 py-5">
-                      <div class="min-w-0">
-                        <div class="flex items-start gap-x-3">
-                          <p
-                            class="text-sm font-semibold leading-6 text-gray-900"
+            {#if invoicePromise}
+              {#await invoicePromise}
+                <p>Loading...</p>
+              {:then response}
+                {#if response.invoices.length === 0}
+                  <p>No invoices yet.</p>
+                {:else}
+                  <ul class="divide-y divide-gray-100">
+                    {#each response.invoices as invoice}
+                      <li
+                        class="flex items-center justify-between gap-x-6 py-5"
+                      >
+                        <div class="min-w-0">
+                          <div class="flex items-start gap-x-3">
+                            <p
+                              class="text-sm font-semibold leading-6 text-gray-900"
+                            >
+                              <time datetime={invoice.created}>
+                                {dayjs(invoice.created, 'YYYY-MM-DD').format(
+                                  'MMMM D, YYYY',
+                                )}
+                              </time>
+                            </p>
+                            {#if invoice.status === 'paid'}
+                              <Badge variant="success">PAID</Badge>
+                            {:else}
+                              <Badge class="uppercase">{invoice.status}</Badge>
+                            {/if}
+                          </div>
+                          <div
+                            class="mt-0 flex items-center gap-x-2 text-xs leading-5 text-gray-500"
                           >
-                            <time datetime={invoice.created}>
+                            <p class="truncate">
+                              ${(invoice.total / 100).toFixed(2)}
+                            </p>
+                          </div>
+                        </div>
+                        <div class="flex flex-none items-center gap-x-4">
+                          <a
+                            href={invoice.hosted_invoice_url}
+                            class="inline-flex items-center rounded-md px-2.5 py-1.5 text-sm disabled:bg-opacity-70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 shadow-sm bg-white text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
+                            target="_blank"
+                          >
+                            View Invoice
+                            <span class="sr-only">
                               {dayjs(invoice.created, 'YYYY-MM-DD').format(
                                 'MMMM D, YYYY',
                               )}
-                            </time>
-                          </p>
-                          {#if invoice.status === 'paid'}
-                            <Badge variant="success">PAID</Badge>
-                          {:else}
-                            <Badge class="uppercase">{invoice.status}</Badge>
-                          {/if}
+                            </span>
+                          </a>
                         </div>
-                        <div
-                          class="mt-0 flex items-center gap-x-2 text-xs leading-5 text-gray-500"
-                        >
-                          <p class="truncate">
-                            ${(invoice.total / 100).toFixed(2)}
-                          </p>
-                        </div>
-                      </div>
-                      <div class="flex flex-none items-center gap-x-4">
-                        <a
-                          href={invoice.hosted_invoice_url}
-                          class="inline-flex items-center rounded-md px-2.5 py-1.5 text-sm disabled:bg-opacity-70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 shadow-sm bg-white text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
-                          target="_blank"
-                        >
-                          View Invoice
-                          <span class="sr-only">
-                            {dayjs(invoice.created, 'YYYY-MM-DD').format(
-                              'MMMM D, YYYY',
-                            )}
-                          </span>
-                        </a>
-                      </div>
-                    </li>
-                  {/each}
-                </ul>
-              {/if}
-            {/await}
+                      </li>
+                    {/each}
+                  </ul>
+                {/if}
+              {/await}
+            {/if}
           </Card>
         </div>
       </div>
@@ -388,145 +406,158 @@ function closePlanModal() {
 />
 
 <Modal visible={planSelectModalVisible} on:close={closePlanModal}>
-  <div class="space-y-4">
-    <h3 class="text-base font-semibold leading-6 text-gray-900">
-      Select a plan
-    </h3>
+  {#if planState !== PlanModalState.Success}
+    <div class="space-y-4">
+      <h3 class="text-base font-semibold leading-6 text-gray-900">
+        Select a plan
+      </h3>
 
-    <div class="flex items-center space-x-2">
-      <span>Yearly</span>
-      <Toggle bind:enabled={monthly} onChange={() => (newPlanSelect = null)} />
-      <span>Monthly</span>
-    </div>
+      <div class="flex items-center space-x-2">
+        <span>Yearly</span>
+        <Toggle
+          bind:enabled={monthly}
+          onChange={() => (newPlanSelect = null)}
+        />
+        <span>Monthly</span>
+      </div>
 
-    <div>
-      <fieldset>
-        <legend class="sr-only">Plan selection</legend>
-        <div class="space-y-4">
-          {#key monthly}
-            {#each $props.plans as plan}
-              <!--
+      <div>
+        <fieldset>
+          <legend class="sr-only">Plan selection</legend>
+          <div class="space-y-4">
+            {#key monthly}
+              {#each $props.plans as plan}
+                <!--
             Checked: "border-transparent", Not Checked: "border-gray-300"
             Active: "border-indigo-600 ring-2 ring-indigo-600"
           -->
-              <label
-                class="relative block cursor-pointer rounded-lg border px-6 py-4 shadow-sm focus:outline-none sm:flex sm:justify-between"
-                class:border-gray-300={getPriceForView(plan).id !==
-                  newPlanSelect}
-                class:border-black={getPriceForView(plan).id === newPlanSelect}
-                class:ring-2={getPriceForView(plan).id === newPlanSelect}
-                class:ring-black={getPriceForView(plan).id === newPlanSelect}
-                class:bg-gray-100={$props.subscription?.stripe_price_id ===
-                  getPriceForView(plan).id && !$props.ended}
-                class:bg-white={$props.subscription?.stripe_price_id !==
-                  getPriceForView(plan).id}
-              >
-                <input
-                  type="radio"
-                  name="server-size"
-                  value={getPriceForView(plan).id}
-                  bind:group={newPlanSelect}
-                  class="sr-only"
-                  aria-labelledby="server-size-0-label"
-                  aria-describedby="server-size-0-description-0 server-size-0-description-1"
-                  disabled={planState === PlanModalState.Loading ||
-                    ($props.subscription?.stripe_price_id ===
-                      getPriceForView(plan).id &&
-                      !$props.ended)}
-                />
-                <span class="flex items-center">
-                  <span class="flex flex-col text-sm">
-                    <span
-                      id="server-size-0-label"
-                      class="font-medium text-gray-900"
-                    >
-                      <span>{plan.title}</span>
-                      {#if plan.trial_days && !$props.subscription}
-                        <Badge variant="success">
-                          {plan.trial_days} day trial
-                        </Badge>
-                      {/if}
-                    </span>
-                    <span
-                      id="server-size-0-description-0"
-                      class="text-gray-500 text-sm"
-                    >
-                      <span>{plan.description}</span>
-
-                      <ul class="list-inside list-disc mt-2">
-                        {#each plan.features as feature}
-                          <li>{feature}</li>
-                        {/each}
-                      </ul>
-                      {#if $props.subscription?.stripe_price_id === getPriceForView(plan).id && !$props.ended}
-                        <span class="inline-block mt-2">
-                          <Badge variant="info">
-                            This is your current plan
-                          </Badge>
-                        </span>
-                      {/if}
-                    </span>
-                  </span>
-                </span>
-                <span
-                  id="server-size-0-description-1"
-                  class="mt-2 flex text-sm sm:ml-4 sm:mt-0 sm:flex-col sm:text-right"
+                <label
+                  class="relative block cursor-pointer rounded-lg border px-6 py-4 shadow-sm focus:outline-none sm:flex sm:justify-between"
+                  class:border-gray-300={getPriceForView(plan).id !==
+                    newPlanSelect}
+                  class:border-black={getPriceForView(plan).id ===
+                    newPlanSelect}
+                  class:ring-2={getPriceForView(plan).id === newPlanSelect}
+                  class:ring-black={getPriceForView(plan).id === newPlanSelect}
+                  class:bg-gray-100={activePlan?.price ===
+                    getPriceForView(plan).id && !$props.ended}
+                  class:bg-white={activePlan?.price !==
+                    getPriceForView(plan).id}
                 >
-                  <span class="font-medium text-gray-900">
-                    {getPriceForView(plan).price}
+                  <input
+                    type="radio"
+                    name="server-size"
+                    value={getPriceForView(plan).id}
+                    bind:group={newPlanSelect}
+                    class="sr-only"
+                    aria-labelledby="server-size-0-label"
+                    aria-describedby="server-size-0-description-0 server-size-0-description-1"
+                    disabled={planState === PlanModalState.Loading ||
+                      (activePlan?.price === getPriceForView(plan).id &&
+                        !$props.ended)}
+                  />
+                  <span class="flex items-center">
+                    <span class="flex flex-col text-sm">
+                      <span
+                        id="server-size-0-label"
+                        class="font-medium text-gray-900"
+                      >
+                        <span>{plan.title}</span>
+                        {#if plan.trial_days && !$props.subscription}
+                          <Badge variant="success">
+                            {plan.trial_days} day trial
+                          </Badge>
+                        {/if}
+                      </span>
+                      <span
+                        id="server-size-0-description-0"
+                        class="text-gray-500 text-sm"
+                      >
+                        <span>{plan.description}</span>
+
+                        <ul class="list-inside list-disc mt-2">
+                          {#each plan.features as feature}
+                            <li>{feature}</li>
+                          {/each}
+                        </ul>
+                        {#if activePlan?.price === getPriceForView(plan).id && !$props.ended}
+                          <span class="inline-block mt-2">
+                            <Badge variant="info">
+                              This is your current plan
+                            </Badge>
+                          </span>
+                        {/if}
+                      </span>
+                    </span>
                   </span>
-                  <span class="ml-1 text-gray-500 sm:ml-0">
-                    /{monthly ? 'mo' : 'yr'}
+                  <span
+                    id="server-size-0-description-1"
+                    class="mt-2 flex text-sm sm:ml-4 sm:mt-0 sm:flex-col sm:text-right"
+                  >
+                    <span class="font-medium text-gray-900">
+                      {getPriceForView(plan).price}
+                    </span>
+                    <span class="ml-1 text-gray-500 sm:ml-0">
+                      /{monthly ? 'mo' : 'yr'}
+                    </span>
                   </span>
-                </span>
-                <!--
+                  <!--
               Active: "border", Not Active: "border-2"
               Checked: "border-indigo-600", Not Checked: "border-transparent"
             -->
-                <span
-                  class="pointer-events-none absolute -inset-px rounded-lg border-2"
-                  aria-hidden="true"
-                />
-              </label>
-            {/each}
-          {/key}
-        </div>
-      </fieldset>
-    </div>
+                  <span
+                    class="pointer-events-none absolute -inset-px rounded-lg border-2"
+                    aria-hidden="true"
+                  />
+                </label>
+              {/each}
+            {/key}
+          </div>
+        </fieldset>
+      </div>
 
-    {#if activePlan}
-      <Button
-        class="w-full text-center justify-center"
-        on:click={onPlanSelected}
-        disabled={!newPlanSelect || planState === PlanModalState.Loading}
-      >
-        Change Plan
-      </Button>
-    {:else if $props.payment_method}
-      <Button
-        class="w-full text-center justify-center"
-        on:click={onPlanSelected}
-        disabled={!newPlanSelect || planState === PlanModalState.Loading}
-      >
-        Subscribe
-      </Button>
-    {:else}
-      <Button
-        class="w-full text-center justify-center"
-        disabled={!newPlanSelect}
-        on:click={() => {
-          priceAfterPayment = newPlanSelect;
-          planAfterPayment = $props.plans.find(
-            plan => getPriceForView(plan).id === newPlanSelect,
-          );
-          paymentModalVisible = true;
-          closePlanModal();
-        }}
-      >
-        Enter Payment Info
-      </Button>
-    {/if}
-  </div>
+      {#if planState === PlanModalState.Error}
+        <p class="text-red-500">
+          {planMessage}
+        </p>
+      {/if}
+
+      {#if activePlan}
+        <Button
+          class="w-full text-center justify-center"
+          on:click={onPlanSelected}
+          disabled={!newPlanSelect || planState === PlanModalState.Loading}
+        >
+          Change Plan
+        </Button>
+      {:else if $props.payment_method}
+        <Button
+          class="w-full text-center justify-center"
+          on:click={onPlanSelected}
+          disabled={!newPlanSelect || planState === PlanModalState.Loading}
+        >
+          Subscribe
+        </Button>
+      {:else}
+        <Button
+          class="w-full text-center justify-center"
+          disabled={!newPlanSelect}
+          on:click={() => {
+            priceAfterPayment = newPlanSelect;
+            planAfterPayment = $props.plans.find(
+              plan => getPriceForView(plan).id === newPlanSelect,
+            );
+            paymentModalVisible = true;
+            closePlanModal();
+          }}
+        >
+          Enter Payment Info
+        </Button>
+      {/if}
+    </div>
+  {:else}
+    <p>Your subscription has been activated!</p>
+  {/if}
 </Modal>
 
 <DangerConfirm

@@ -70,7 +70,7 @@ async function submitPaymentMethod() {
   }
 
   const response = await api
-    .url('/store-payment')
+    .url('/payment-method')
     .post({ payment_method_id: setupIntent.payment_method })
     .json<{ props: Props }>();
 
