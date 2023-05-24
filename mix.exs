@@ -7,7 +7,13 @@ defmodule Bankroll.MixProject do
       version: "0.1.0",
       elixir: "~> 1.14",
       start_permanent: Mix.env() == :prod,
-      deps: deps()
+      deps: deps(),
+      description: "A billing portal UI built on top of Bling",
+      package: [
+        licenses: [],
+        links: %{"Home" => "https://bankroll.ozzie.sh"},
+        files: ~w(priv lib stubs mix.exs README.md .formatter.exs)
+      ]
     ]
   end
 
