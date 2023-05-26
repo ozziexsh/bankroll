@@ -28,7 +28,5 @@ defmodule Mix.Tasks.Bankroll.Assets do
       Path.join([stub_path, "style.css"]),
       Path.join([final_path, "style.css"])
     )
-
-    Mix.Shell.IO.info("Copied assets to: #{final_path}")
   end
 end

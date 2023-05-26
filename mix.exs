@@ -13,6 +13,10 @@ defmodule Bankroll.MixProject do
         licenses: [],
         links: %{"Home" => "https://bankroll.ozzie.sh"},
         files: ~w(priv lib stubs mix.exs README.md .formatter.exs)
+      ],
+      docs: [
+        main: "readme",
+        extras: ["README.md"]
       ]
     ]
   end
@@ -32,7 +36,7 @@ defmodule Bankroll.MixProject do
       {:plug, "~> 1.14"},
       {:stripity_stripe, "~> 2.17"},
       {:phoenix_live_view, "~> 0.18.16"},
-      {:bling, "~> 0.1.0"}
+      {:bling, "~> 0.2.0"}
     ]
   end
 end

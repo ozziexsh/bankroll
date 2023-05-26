@@ -5,8 +5,8 @@
 Scaffold a new phoenix app with authentication:
 
 ```shell
-mix phx.new demo
-cd demo
+mix phx.new my_app
+cd my_app
 mix phx.gen.auth Accounts User users
 ```
 
@@ -15,8 +15,9 @@ Purchase a license at https://bankroll.ozzie.sh
 Download the latest release and extract the contents into a folder called `bankroll` in your project folder:
 
 ```shell
-tar -xvf bankroll-v-xxx.tar.gz
-mv bankroll-v-xxx bankroll
+# in ./my_app
+mkdir bankroll
+tar -xvf bankroll-x.x.x.tar.gz -C ./bankroll
 ```
 
 Add the dependencies to your mix file:
@@ -25,7 +26,7 @@ Add the dependencies to your mix file:
 defp deps do
   [
     {:stripity_stripe, "~> 2.17"},
-    {:bling, "~> 0.1.0"},
+    {:bling, "~> 0.2.0"},
     {:bankroll, path: "./bankroll"}
   ]
 end
@@ -36,6 +37,8 @@ Install the dependencies:
 ```shell
 mix deps.get
 ```
+
+> Note: If your mix.exs file shows an error in your editor after installing the dependencies, restart your elixir language server.
 
 Follow the steps to install the Bling module:
 
@@ -50,13 +53,13 @@ mix bankroll.install
 Open up your router file and add the bankroll plug and route right after the ones installed with Bling:
 
 ```elixir
-defmodule DemoWeb.Router do
+defmodule MyAppWeb.Router do
   import Bankroll.Router
 
   pipeline :browser do
     # ... rest of plugs
-    plug Bling.Plug, bling: Demo.Bling
-    plug Bankroll.Plug, bankroll: Demo.Bankroll
+    plug Bling.Plug, bling: MyApp.Bling
+    plug Bankroll.Plug, bankroll: MyApp.Bankroll
   end
 
   # ... your routes
@@ -70,17 +73,33 @@ defmodule DemoWeb.Router do
 end
 ```
 
-That's it!
+Edit the default plans in `lib/my_app/bankroll.ex` to reflect your actual stripe plans. You can read more about [Plan Configuration](#plan-configuration) below.
 
-Make sure to read about [Plan Configuration](#plan-configuration) to set up your stripe price ids so your plans properly display.
+Open up your `lib/my_app/bling.ex` file and configure who can access the billing portal:
 
-See the section below on linking to the portal to view the billing portal.
+```elixir
+defmodule MyApp.Bling do
+  # ...
+
+  def can_manage_billing?(conn, customer) do
+    conn.assigns.current_user.id == customer.id
+  end
+end
+```
+
+You can now link users to the billing portal from your app:
+
+```elixir
+~p"/billing/user/#{current_user.id}"
+```
 
 ## Deploying
 
 The `mix bankroll.install` command should only be ran once.
 
 When you are deploying, you should either commit the assets in `priv/static/assets/bankroll` or run the `mix bankroll.assets` command during deployment to ensure the required js/css is present.
+
+You can either commit the local `./bankroll` folder you extracted, or git ignore it and ensure you extract it to that location during each deployment.
 
 ## Updating
 
@@ -105,36 +124,36 @@ They can have the following properties:
     - `price` - a string representation of the price, like `$100`
 
 ```elixir
-defmodule Demo.Bankroll do
+defmodule MyApp.Bankroll do
   # ...
 
   def plans() do
-    [
-      %{
-        title: "Plus",
-        description: "Our most popular plan. Good for passing text back and forth.",
-        features: [
-          "Unlimited devices"
-        ],
-        trial_days: 7,
-        prices: %{
-          monthly: %{id: "price_1234", price: "$5"},
-          yearly: %{id: "price_1234", price: "$50"}
-        }
-      },
-      %{
-        title: "Pro",
-        description: "For users that would like to share files between devices.",
-        features: [
-          "Unlimited devices",
-          "Media Uploads"
-        ],
-        prices: %{
-          monthly: %{id: "price_1234", price: "$10"},
-          yearly: %{id: "price_1234", price: "$100"}
-        }
+  [
+    %{
+      title: "Plus",
+      description: "Our most popular plan. Good for passing text back and forth.",
+      features: [
+        "Unlimited devices"
+      ],
+      trial_days: 7,
+      prices: %{
+        monthly: %{id: "price_1234", price: "$5"},
+        yearly: %{id: "price_1234", price: "$50"}
       }
-    ]
+    },
+    %{
+      title: "Pro",
+      description: "For users that would like to share files between devices.",
+      features: [
+        "Unlimited devices",
+        "Media Uploads"
+      ],
+      prices: %{
+        monthly: %{id: "price_1234", price: "$10"},
+        yearly: %{id: "price_1234", price: "$100"}
+      }
+    }
+  ]
   end
 end
 ```
@@ -144,11 +163,11 @@ end
 If you'd like to restrict a user from changing to a plan, you can implement the `can_subscribe_to_plan?/2` function. It should either return `:ok` or `{:error, "reason"}`. This can be useful if you want to prevent the user from downgrading to a lower plan if they need to prune something first.
 
 ```elixir
-defmodule Demo.Bankroll do
+defmodule MyApp.Bankroll do
   # ...
 
   def can_subscribe_to_plan?(customer, plan) do
-    sites = Demo.Accounts.sites(customer)
+    sites = MyApp.Accounts.sites(customer)
 
     if plan[:title] == "Plus" && Enum.count(sites) >= 10 do
       {:error, "You must delete some sites first"}
@@ -166,7 +185,7 @@ end
 You can link to the portal using either a route helper or verified routes:
 
 ```elixir
-path = DemoWeb.Router.Helpers.bankroll_root_path(DemoWeb.Endpoint, :index, "user", current_user.id)
+path = MyAppWeb.Router.Helpers.bankroll_root_path(MyAppWeb.Endpoint, :index, "user", current_user.id)
 
 path = ~p"/billing/user/#{current_user.id}"
 ```
@@ -178,17 +197,17 @@ You can choose who has access to the billing portal by implementing `can_manage_
 Note that the `customer` is not the logged in user but is resolved based on the url like `/billing/user/4` or `/billing/team/2`. You should use the `conn` to derive the logged in user to see if they can manage billing for the provided `customer`.
 
 ```elixir
-defmodule Demo.Bling do
+defmodule MyApp.Bling do
   # ...
 
   def can_manage_billing?(conn, customer) do
     user = conn.assigns.current_user
 
     case customer do
-      %Demo.Accounts.User{} ->
+      %MyApp.Accounts.User{} ->
         customer.id == user.id
 
-      # %Demo.Accounts.Team{} -> customer.id == user.team_id
+      # %MyApp.Accounts.Team{} -> customer.id == user.team_id
       _ ->
         false
     end
