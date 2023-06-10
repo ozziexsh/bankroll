@@ -4,7 +4,7 @@ defmodule Bankroll.MixProject do
   def project do
     [
       app: :bankroll,
-      version: "0.2.0",
+      version: "0.3.0",
       elixir: "~> 1.14",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
@@ -36,7 +36,7 @@ defmodule Bankroll.MixProject do
       {:plug, "~> 1.14"},
       {:stripity_stripe, "~> 2.17"},
       {:phoenix_live_view, "~> 0.18.16"},
-      {:bling, path: "../bling"}
+      {:bling, "~> 0.3.0"}
     ]
   end
 end
