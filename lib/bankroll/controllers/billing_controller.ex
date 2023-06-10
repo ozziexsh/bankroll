@@ -8,33 +8,78 @@ defmodule Bankroll.Controllers.BillingController do
 
   plug(Bling.Plugs.AssignCustomer)
 
-  def index(conn, _params) do
-    conn
-    |> assign(:props, get_props(conn))
-    |> render(:index)
+  def index(conn, params) do
+    if Map.has_key?(params, "session_id") do
+      conn
+      |> handle_checkout_session(params["session_id"])
+      |> redirect(external: billing_url(conn))
+    else
+      conn
+      |> assign(:props, get_props(conn))
+      |> render(:index)
+    end
   end
 
   def props(conn, _params) do
     conn |> json(%{props: get_props(conn)})
   end
 
-  def setup_payment(conn, _params) do
-    intent = Bling.Customers.create_setup_intent(conn.assigns.customer)
+  def checkout_url(conn, params) do
+    bankroll = Bankroll.bankroll()
+    plan = Bankroll.plan_from_price_id(params["price_id"])
+    previous_subscription = Customers.subscription(conn.assigns.customer)
+    trial_days = plan[:trial_days]
+    customer = conn.assigns.customer
 
-    conn |> json(%{client_secret: intent.client_secret})
+    can_subscribe =
+      Bling.Util.maybe_call({bankroll, :can_subscribe_to_plan?, [customer, plan]}, :ok)
+
+    if can_subscribe == :ok do
+      stripe = %{
+        success_url: "#{billing_url(conn)}?session_id={CHECKOUT_SESSION_ID}",
+        cancel_url: billing_url(conn)
+      }
+
+      # prevent trial abuse by not letting prev subscribed people
+      # keep signing up for trials and then cancelling
+      stripe =
+        if trial_days && !previous_subscription,
+          do: Map.merge(stripe, %{subscription_data: %{trial_period_days: trial_days}}),
+          else: stripe
+
+      url =
+        Customers.subscription_checkout_url(conn.assigns.customer,
+          prices: [{params["price_id"], 1}],
+          stripe: stripe
+        )
+
+      conn |> json(%{url: url})
+    else
+      {:error, reason} = can_subscribe
+      conn |> json(%{ok: false, message: reason})
+    end
+  end
+
+  def setup_intent_url(conn, _params) do
+    {:ok, intent} =
+      Stripe.Session.create(%{
+        customer: conn.assigns.customer.stripe_id,
+        mode: "setup",
+        success_url: "#{billing_url(conn)}?session_id={CHECKOUT_SESSION_ID}",
+        cancel_url: billing_url(conn),
+        payment_method_types: ["card"]
+      })
+
+    conn |> json(%{url: intent.url})
   end
 
   def store_subscription(conn, params) do
     price_id = params["price_id"]
     customer = conn.assigns.customer
-    payment? = Customers.has_default_payment_method?(customer)
     subscribed? = Customers.subscribed?(customer)
     subscription = Customers.subscription(customer)
-    plan = conn.assigns.bankroll.plan_from_price_id(price_id)
-    trial_days = plan[:trial_days]
-    return_url = finalize_url(conn)
-    bankroll = conn.assigns.bankroll
-    repo = bankroll.bling().repo()
+    plan = Bankroll.plan_from_price_id(price_id)
+    bankroll = Bankroll.bankroll()
 
     can_subscribe =
       Bling.Util.maybe_call({bankroll, :can_subscribe_to_plan?, [customer, plan]}, :ok)
@@ -44,36 +89,12 @@ defmodule Bankroll.Controllers.BillingController do
         {:error, reason} = can_subscribe
         conn |> json(%{ok: false, message: reason})
 
-      subscription && Subscriptions.ended?(subscription) ->
-        # delete old subscription, create new one without trial
-        items = Subscriptions.subscription_items(subscription)
-        items |> Enum.each(fn item -> repo.delete(item) end)
-        repo.delete(subscription)
-
-        create_subscription(conn, customer, price_id,
-          return_url: "#{return_url}?price_id=#{price_id}"
-        )
-
-      subscription && Enum.at(subscription.subscription_items, 0).stripe_price_id == price_id ->
-        conn |> json(%{props: get_props(conn)})
-
-      payment? and not subscribed? ->
-        params = if trial_days, do: %{trial_period_days: trial_days}, else: %{}
-
-        create_subscription(conn, customer, price_id,
-          return_url: "#{return_url}?price_id=#{price_id}",
-          stripe: params
-        )
-
-      payment? and subscribed? ->
+      subscribed? ->
         prices = [{price_id, 1}]
         Subscriptions.change_prices(subscription, prices: prices)
         conn |> json(%{props: get_props(conn)})
 
-      not payment? and not subscribed? ->
-        # create incomplete subscription
-        # subscription = Customers.create_subscription(customer, price_id)
-        # conn |> json(%{client_secret: subscription.latest_invoice.payment_intent.client_secret})
+      true ->
         conn |> json(%{props: get_props(conn)})
     end
   end
@@ -119,32 +140,43 @@ defmodule Bankroll.Controllers.BillingController do
     conn |> json(%{invoices: invoices})
   end
 
-  defp create_subscription(conn, customer, price_id, opts) do
-    prices = [{price_id, 1}]
+  defp handle_checkout_session(conn, session_id) do
+    result = Stripe.Session.retrieve(session_id, expand: ["setup_intent", "subscription"])
 
-    subscription_result =
-      Customers.create_subscription(customer, Keyword.put(opts, :prices, prices))
+    case result do
+      {:ok, %{status: "complete", mode: "setup"} = intent} ->
+        maybe_update_payment(conn, intent.setup_intent.payment_method)
 
-    case subscription_result do
-      {:error, error} ->
-        conn |> json(%{ok: false, message: error.user_message})
+      {:ok, %{status: "complete", mode: "subscription"} = intent} ->
+        # the user could have changed their payment method during checkout
+        maybe_update_payment(conn, intent.subscription.default_payment_method)
 
-      {:requires_action, payment_intent} ->
+      _ ->
         conn
-        |> json(%{
-          payment_intent_id: payment_intent.id,
-          client_secret: payment_intent.client_secret
-        })
-
-      {:ok, _subscription} ->
-        conn |> json(%{props: get_props(conn)})
     end
+  end
+
+  defp maybe_update_payment(conn, payment_method) do
+    Bling.Customers.update_default_payment_method(
+      conn.assigns.customer,
+      payment_method
+    )
+
+    subscription = Customers.subscription(conn.assigns.customer)
+
+    if !!subscription and not Subscriptions.ended?(subscription) do
+      Stripe.Subscription.update(subscription.stripe_id, %{
+        default_payment_method: payment_method
+      })
+    end
+
+    conn
   end
 
   defp get_props(conn) do
     customer = conn.assigns.customer
     subscription = Customers.subscription(customer)
-    bankroll = conn.assigns.bankroll
+    bankroll = Bankroll.bankroll()
 
     %{
       payment_method: get_payment_method(customer),
@@ -160,7 +192,7 @@ defmodule Bankroll.Controllers.BillingController do
           do: subscription.trial_ends_at |> DateTime.to_date(),
           else: nil
         ),
-      plans: conn.assigns.bankroll.plans(),
+      plans: Bankroll.plans(),
       base_url: billing_url(conn),
       finalize_url: finalize_url(conn),
       fix_subscription_url: fix_subscription_url(conn, subscription),
@@ -169,7 +201,7 @@ defmodule Bankroll.Controllers.BillingController do
       # current_user_id: bankraoll.user_id_from_conn(conn),
       current_user_id: nil,
       customer_display_name: bankroll.customer_display_name(customer),
-      company_display_name: bankroll.company_name()
+      company_display_name: Bankroll.company_name()
     }
   end
 

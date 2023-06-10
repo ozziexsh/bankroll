@@ -11,16 +11,14 @@ export function getStripe() {
   return stripe;
 }
 
-interface CreateOrUpdateSubscriptionOptions {
+interface UpdateSubscriptionOptions {
   priceId: string;
   onErrorMessage(message: string): void;
   onNextAction(response: { error?: string; paymentIntent?: any }): void;
   onSuccess(response: { props: Props });
 }
 
-export async function createOrUpdateSubscription(
-  options: CreateOrUpdateSubscriptionOptions,
-) {
+export async function updateSubscription(options: UpdateSubscriptionOptions) {
   const response = await storeSubscription(options.priceId);
 
   if ('message' in response) {

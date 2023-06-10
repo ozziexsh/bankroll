@@ -5,7 +5,7 @@ import SetupPaymentModal from './components/SetupPaymentModal.svelte';
 import Toggle from './components/Toggle.svelte';
 import { props } from './store';
 import type { Invoice, Plan, Props, Subscription } from './types';
-import { createOrUpdateSubscription, getStripe } from './stripe';
+import { updateSubscription, getStripe } from './stripe';
 import Modal from './components/Modal.svelte';
 import { initSocket } from './socket';
 import { onMount } from 'svelte';
@@ -80,6 +80,10 @@ function getActivePlan(subscription: Subscription | null) {
     return null;
   }
 
+  if (subscription.stripe_status == 'canceled') {
+    return null;
+  }
+
   for (const plan of $props.plans) {
     if (
       plan.prices.monthly?.id ===
@@ -101,7 +105,22 @@ function getActivePlan(subscription: Subscription | null) {
 async function onPlanSelected() {
   planState = PlanModalState.Loading;
 
-  await createOrUpdateSubscription({
+  if (!activePlan) {
+    const response = await api
+      .url('/checkout-subscription')
+      .post({ price_id: newPlanSelect })
+      .json<{ url: string; message?: string }>();
+
+    if (response.message) {
+      planState = PlanModalState.Error;
+      planMessage = response.message;
+    } else {
+      window.location.href = response.url;
+    }
+    return;
+  }
+
+  await updateSubscription({
     priceId: newPlanSelect!,
     onErrorMessage(message) {
       planState = PlanModalState.Error;
@@ -172,6 +191,14 @@ function closePlanModal() {
   planMessage = '';
   newPlanSelect = null;
 }
+
+async function redirectToSetup() {
+  const response = await api
+    .url('/checkout-setup')
+    .post()
+    .json<{ url: string }>();
+  window.location.href = response.url;
+}
 </script>
 
 <div class="">
@@ -192,26 +219,6 @@ function closePlanModal() {
       <div class="py-12 px-4">
         <div class="max-w-2xl mx-auto space-y-6">
           <Card title="My Subscription">
-            {#if !$props.subscription}
-              <div class="text-center mt-6">
-                <ArrowPathIcon class="mx-auto h-12 w-12 text-gray-400" />
-                <h3 class="mt-2 text-sm font-semibold text-gray-900">
-                  You do not have a subscription
-                </h3>
-                <p class="mt-1 text-sm text-gray-500">
-                  Choose a plan to get started
-                </p>
-                <div class="mt-6">
-                  <Button
-                    type="button"
-                    on:click={() => (planSelectModalVisible = true)}
-                  >
-                    <PlusIcon class="-ml-0.5 mr-1.5 h-5 w-5" />
-                    Choose Plan
-                  </Button>
-                </div>
-              </div>
-            {/if}
             {#if $props.fix_subscription_url}
               <Alert
                 title="We couldn't process your last payment and it is now overdue. Please fix the issue by visiting this link below."
@@ -246,6 +253,28 @@ function closePlanModal() {
                 description={'To resubscribe, choose a plan below.'}
               />
             {/if}
+
+            {#if !activePlan}
+              <div class="text-center mt-6">
+                <ArrowPathIcon class="mx-auto h-12 w-12 text-gray-400" />
+                <h3 class="mt-2 text-sm font-semibold text-gray-900">
+                  You do not have a subscription
+                </h3>
+                <p class="mt-1 text-sm text-gray-500">
+                  Choose a plan to get started
+                </p>
+                <div class="mt-6">
+                  <Button
+                    type="button"
+                    on:click={() => (planSelectModalVisible = true)}
+                  >
+                    <PlusIcon class="-ml-0.5 mr-1.5 h-5 w-5" />
+                    Choose Plan
+                  </Button>
+                </div>
+              </div>
+            {/if}
+
             {#if activePlan}
               <div class="mt-2 max-w-xl text-sm text-gray-500">
                 <p>
@@ -301,10 +330,7 @@ function closePlanModal() {
                   You need a payment method to subscribe
                 </p>
                 <div class="mt-6">
-                  <Button
-                    type="button"
-                    on:click={() => (paymentModalVisible = true)}
-                  >
+                  <Button type="button" on:click={redirectToSetup}>
                     <PlusIcon class="-ml-0.5 mr-1.5 h-5 w-5" />
                     Add Payment Method
                   </Button>
@@ -321,10 +347,7 @@ function closePlanModal() {
                   </span>
                 </div>
                 <div>
-                  <Button
-                    on:click={() => (paymentModalVisible = true)}
-                    variant="basic"
-                  >
+                  <Button on:click={redirectToSetup} variant="basic">
                     Update
                   </Button>
                 </div>
@@ -530,28 +553,13 @@ function closePlanModal() {
         >
           Change Plan
         </Button>
-      {:else if $props.payment_method}
+      {:else}
         <Button
           class="w-full text-center justify-center"
           on:click={onPlanSelected}
           disabled={!newPlanSelect || planState === PlanModalState.Loading}
         >
           Subscribe
-        </Button>
-      {:else}
-        <Button
-          class="w-full text-center justify-center"
-          disabled={!newPlanSelect}
-          on:click={() => {
-            priceAfterPayment = newPlanSelect;
-            planAfterPayment = $props.plans.find(
-              plan => getPriceForView(plan).id === newPlanSelect,
-            );
-            paymentModalVisible = true;
-            closePlanModal();
-          }}
-        >
-          Enter Payment Info
         </Button>
       {/if}
     </div>

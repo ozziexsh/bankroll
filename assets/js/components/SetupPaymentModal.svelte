@@ -6,7 +6,7 @@ import type { Plan, Props } from '../types';
 import Button from './Button.svelte';
 import Modal from './Modal.svelte';
 import PaymentElement from './PaymentElement.svelte';
-import { createOrUpdateSubscription, getStripe } from '../stripe';
+import { updateSubscription, getStripe } from '../stripe';
 import Badge from './Badge.svelte';
 
 export let visible: boolean;
@@ -50,7 +50,7 @@ async function onPaymentSuccess() {
 
   paymentStatus = PaymentStatus.SubmittingSubscription;
 
-  await createOrUpdateSubscription({
+  await updateSubscription({
     priceId,
     onErrorMessage(message) {
       paymentStatus = PaymentStatus.Error;
