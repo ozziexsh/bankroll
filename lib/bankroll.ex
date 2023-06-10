@@ -1,25 +1,33 @@
 defmodule Bankroll do
-  defmacro __using__(opts) do
-    quote do
-      @bling unquote(opts[:bling])
+  @type customer :: any
+  @type plan :: any
 
-      @before_compile unquote(__MODULE__)
-    end
+  @callback customer_display_name(customer) :: binary
+  @callback can_subscribe_to_plan?(customer, plan) :: boolean
+
+  def bling do
+    Application.get_env(:bankroll, :bling)
   end
 
-  defmacro __before_compile__(_env) do
-    quote do
-      def bling, do: @bling
+  def bankroll do
+    Application.get_env(:bankroll, :bankroll)
+  end
 
-      def plan_from_price_id(price_id) do
-        Enum.find_value(plans(), fn plan ->
-          plan.prices
-          |> Map.values()
-          |> Enum.find_value(fn price ->
-            if price.id == price_id, do: plan, else: nil
-          end)
-        end)
-      end
-    end
+  def plans do
+    Application.get_env(:bankroll, :plans, [])
+  end
+
+  def company_name do
+    Application.get_env(:bankroll, :company_name, "")
+  end
+
+  def plan_from_price_id(price_id) do
+    Enum.find_value(plans(), fn plan ->
+      plan.prices
+      |> Map.values()
+      |> Enum.find_value(fn price ->
+        if price.id == price_id, do: plan, else: nil
+      end)
+    end)
   end
 end

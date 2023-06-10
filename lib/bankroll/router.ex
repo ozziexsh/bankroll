@@ -28,9 +28,16 @@ defmodule Bankroll.Router do
           )
 
           Phoenix.Router.post(
-            "/setup-payment",
+            "/checkout-subscription",
             Bankroll.Controllers.BillingController,
-            :setup_payment,
+            :checkout_url,
+            opts
+          )
+
+          Phoenix.Router.post(
+            "/checkout-setup",
+            Bankroll.Controllers.BillingController,
+            :setup_intent_url,
             opts
           )
 

@@ -26,7 +26,7 @@ Add the dependencies to your mix file:
 defp deps do
   [
     {:stripity_stripe, "~> 2.17"},
-    {:bling, "~> 0.2.0"},
+    {:bling, "~> 0.3.0"},
     {:bankroll, path: "./bankroll"}
   ]
 end
@@ -50,17 +50,11 @@ Run the bankroll install command to create the required files and copy over asse
 mix bankroll.install
 ```
 
-Open up your router file and add the bankroll plug and route right after the ones installed with Bling:
+Open up your router file and add the bankroll route right after the one installed with Bling:
 
 ```elixir
 defmodule MyAppWeb.Router do
   import Bankroll.Router
-
-  pipeline :browser do
-    # ... rest of plugs
-    plug Bling.Plug, bling: MyApp.Bling
-    plug Bankroll.Plug, bankroll: MyApp.Bankroll
-  end
 
   # ... your routes
 
@@ -73,62 +67,16 @@ defmodule MyAppWeb.Router do
 end
 ```
 
-Edit the default plans in `lib/my_app/bankroll.ex` to reflect your actual stripe plans. You can read more about [Plan Configuration](#plan-configuration) below.
+Now we need to configure the modules and plans in `config/config.exs`.
 
-Open up your `lib/my_app/bling.ex` file and configure who can access the billing portal:
-
-```elixir
-defmodule MyApp.Bling do
-  # ...
-
-  def can_manage_billing?(conn, customer) do
-    conn.assigns.current_user.id == customer.id
-  end
-end
-```
-
-You can now link users to the billing portal from your app:
+You can read more about [Plan Configuration](#plan-configuration) below.
 
 ```elixir
-~p"/billing/user/#{current_user.id}"
-```
-
-## Deploying
-
-The `mix bankroll.install` command should only be ran once.
-
-When you are deploying, you should either commit the assets in `priv/static/assets/bankroll` or run the `mix bankroll.assets` command during deployment to ensure the required js/css is present.
-
-You can either commit the local `./bankroll` folder you extracted, or git ignore it and ensure you extract it to that location during each deployment.
-
-## Updating
-
-When new releases are uploaded to the website, you can download the latest release and replace the files in your local `bankroll` folder with the new release. Read the release notes to see any specific commands that need to be ran.
-
-## Plan configuration
-
-Plans can be configured in your bankroll module.
-
-They can have the following properties:
-
-- `title` - the plan title shown to the user
-- `description` - a brief sentence or two to describe who the plan is for or its selling points
-- `features` - an array of strings representing what is included in the plan
-- `trial_days` - (optional) how many trial days to give the user for this plan
-- `prices`
-  - `monthly`
-    - `id` - the stripe price id for the monthly cycle
-    - `price` - a string representation of the price, like `$10`
-  - `yearly`
-    - `id` - the stripe price id for the yearly cycle
-    - `price` - a string representation of the price, like `$100`
-
-```elixir
-defmodule MyApp.Bankroll do
-  # ...
-
-  def plans() do
-  [
+config :bankroll,
+  bling: MyApp.Bling,
+  bankroll: MyApp.Bankroll,
+  company_name: "Acme Co",
+  plans: [
     %{
       title: "Plus",
       description: "Our most popular plan. Good for passing text back and forth.",
@@ -154,8 +102,83 @@ defmodule MyApp.Bankroll do
       }
     }
   ]
+```
+
+Open up your `lib/my_app/bling.ex` file and configure who can access the billing portal:
+
+```elixir
+defmodule MyApp.Bling do
+  # ...
+
+  def can_manage_billing?(conn, customer) do
+    conn.assigns.current_user.id == customer.id
   end
 end
+```
+
+You can now link users to the billing portal from your app:
+
+```elixir
+~p"/billing/user/#{@current_user.id}"
+```
+
+## Deploying
+
+The `mix bankroll.install` command should only be ran once.
+
+When you are deploying, you should either commit the assets in `priv/static/assets/bankroll` or run the `mix bankroll.assets` command during deployment to ensure the required js/css is present.
+
+You can either commit the local `./bankroll` folder you extracted, or git ignore it and ensure you extract it to that location during each deployment.
+
+## Updating
+
+When new releases are uploaded to the website, you can download the latest release and replace the files in your local `bankroll` folder with the new release. Read the release notes to see any specific commands that need to be ran.
+
+## Plan configuration
+
+Plans are defined in the `:bankroll` configuration under the `:plans` key.
+
+They can have the following properties:
+
+- `title` - the plan title shown to the user
+- `description` - a brief sentence or two to describe who the plan is for or its selling points
+- `features` - an array of strings representing what is included in the plan
+- `trial_days` - (optional) how many trial days to give the user for this plan
+- `prices`
+  - `monthly`
+    - `id` - the stripe price id for the monthly cycle
+    - `price` - a string representation of the price, like `$10`
+  - `yearly`
+    - `id` - the stripe price id for the yearly cycle
+    - `price` - a string representation of the price, like `$100`
+
+```elixir
+config :bankroll, plans: [
+  %{
+    title: "Plus",
+    description: "Our most popular plan. Good for passing text back and forth.",
+    features: [
+      "Unlimited devices"
+    ],
+    trial_days: 7,
+    prices: %{
+      monthly: %{id: "price_1234", price: "$5"},
+      yearly: %{id: "price_1234", price: "$50"}
+    }
+  },
+  %{
+    title: "Pro",
+    description: "For users that would like to share files between devices.",
+    features: [
+      "Unlimited devices",
+      "Media Uploads"
+    ],
+    prices: %{
+      monthly: %{id: "price_1234", price: "$10"},
+      yearly: %{id: "price_1234", price: "$100"}
+    }
+  }
+]
 ```
 
 ## Restricting plans
