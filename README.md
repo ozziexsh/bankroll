@@ -26,7 +26,7 @@ Add the dependencies to your mix file:
 defp deps do
   [
     {:stripity_stripe, "~> 2.17"},
-    {:bling, "~> 0.3.0"},
+    {:bling, "~> 0.4.0"},
     {:bankroll, path: "./bankroll"}
   ]
 end
