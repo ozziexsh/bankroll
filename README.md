@@ -1,5 +1,9 @@
 # Bankroll
 
+A prebuilt subscription management UI for Elixir and Phoenix, built on [Bling](https://github.com/ozziexsh/bling).
+
+![bankroll-screenshot](https://github.com/ozziexsh/bankroll/assets/2093630/5945efa3-89c1-4480-9bee-b9db2665540b)
+
 ## Installation
 
 Scaffold a new phoenix app with authentication:
