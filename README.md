@@ -10,9 +10,7 @@ cd my_app
 mix phx.gen.auth Accounts User users
 ```
 
-Purchase a license at https://bankroll.ozzie.sh
-
-Download the latest release and extract the contents into a folder called `bankroll` in your project folder:
+[Download the latest release](https://github.com/ozziexsh/bankroll/releases) and extract the contents into a folder called `bankroll` in your project folder:
 
 ```shell
 # in ./my_app
